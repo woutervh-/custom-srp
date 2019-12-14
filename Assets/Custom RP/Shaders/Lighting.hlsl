@@ -1,10 +1,10 @@
 #ifndef CUSTOM_LIGHTING_INCLUDED
 #define CUSTOM_LIGHTING_INCLUDED
 
-float GetShadowAttenuation (float3 worldPos) {
-    float4 shadowPos = mul(_WorldToShadowMatrix, float4(worldPos, 1.0));
-    shadowPos.xyz /= shadowPos.w;
-    return SAMPLE_TEXTURE2D_SHADOW(_ShadowMap, sampler_ShadowMap, shadowPos.xyz);
+float GetShadowAttenuation (float3 worldPosition) {
+    float4 shadowPosition = mul(_WorldToShadowMatrix, float4(worldPosition, 1.0));
+    shadowPosition.xyz /= shadowPosition.w;
+    return SAMPLE_TEXTURE2D_SHADOW(_ShadowMap, sampler_ShadowMap, shadowPosition.xyz);
 }
 
 float3 GetIncomingLight (Surface surface, Light light) {
