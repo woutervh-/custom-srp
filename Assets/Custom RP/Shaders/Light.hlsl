@@ -10,6 +10,13 @@ CBUFFER_START(_CustomLight)
     StructuredBuffer<int> _LightsIndices;
 CBUFFER_END
 
+CBUFFER_START(_ShadowBuffer)
+    float4x4 _WorldToShadowMatrix;
+CBUFFER_END
+
+TEXTURE2D_SHADOW(_ShadowMap);
+SAMPLER_CMP(sampler_ShadowMap);
+
 struct Light {
     float4 position;
     float4 color;

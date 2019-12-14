@@ -35,9 +35,9 @@ public partial class CameraRenderer
 
     partial void DrawUnsupportedShaders(ScriptableRenderContext context, Camera camera, CullingResults cullingResults)
     {
-        if (CameraRenderer.errorMaterial == null)
+        if (errorMaterial == null)
         {
-            CameraRenderer.errorMaterial = new Material(Shader.Find("Hidden/InternalErrorShader"));
+            errorMaterial = new Material(Shader.Find("Hidden/InternalErrorShader"));
         }
 
         DrawingSettings drawingSettings = new DrawingSettings()
@@ -45,9 +45,9 @@ public partial class CameraRenderer
             sortingSettings = new SortingSettings(camera),
             overrideMaterial = errorMaterial
         };
-        for (int i = 0; i < CameraRenderer.legacyShaderTagIds.Length; i++)
+        for (int i = 0; i < legacyShaderTagIds.Length; i++)
         {
-            drawingSettings.SetShaderPassName(i, CameraRenderer.legacyShaderTagIds[i]);
+            drawingSettings.SetShaderPassName(i, legacyShaderTagIds[i]);
         }
         FilteringSettings filteringSettings = FilteringSettings.defaultValue;
         context.DrawRenderers(cullingResults, ref drawingSettings, ref filteringSettings);
@@ -64,11 +64,11 @@ public partial class CameraRenderer
     partial void PrepareBuffer(Camera camera)
     {
         Profiler.BeginSample("Editor Only");
-        this.buffer.name = SampleName = camera.name;
+        cameraBuffer.name = SampleName = camera.name;
         Profiler.EndSample();
     }
 
 #else
-	const string SampleName = CameraRenderer.bufferName;
+	const string SampleName = bufferName;
 #endif
 }

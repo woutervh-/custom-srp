@@ -12,6 +12,7 @@ public class Lighting
     static int lightDirectionsId = Shader.PropertyToID("_LightDirections");
     static int lightPositionsId = Shader.PropertyToID("_LightPositions");
     static int lightAttenuationsId = Shader.PropertyToID("_LightAttenuations");
+    static int shadowMapId = Shader.PropertyToID("_ShadowMap");
 
     static Vector4[] lightColors = new Vector4[maxLightCount];
     static Vector4[] lightDirections = new Vector4[maxLightCount];

@@ -1,6 +1,12 @@
 #ifndef CUSTOM_LIGHTING_INCLUDED
 #define CUSTOM_LIGHTING_INCLUDED
 
+float GetShadowAttenuation (float3 worldPos) {
+    float4 shadowPos = mul(_WorldToShadowMatrix, float4(worldPos, 1.0));
+    shadowPos.xyz /= shadowPos.w;
+    return SAMPLE_TEXTURE2D_SHADOW(_ShadowMap, sampler_ShadowMap, shadowPos.xyz);
+}
+
 float3 GetIncomingLight (Surface surface, Light light) {
     float3 lightDirection = GetLightDirection(surface, light);
     float diffuse = saturate(dot(surface.normal, lightDirection));
@@ -15,7 +21,9 @@ float3 GetIncomingLight (Surface surface, Light light) {
 	spotFade = saturate(spotFade * light.attenuation.z + light.attenuation.w);
 	spotFade *= spotFade;
 
-	diffuse *= spotFade * rangeFade / distanceSqr;
+    float shadowAttenuation = GetShadowAttenuation(surface.worldPosition);
+
+	diffuse *= shadowAttenuation * spotFade * rangeFade / distanceSqr;
 
     return diffuse * light.color.rgb;
 }

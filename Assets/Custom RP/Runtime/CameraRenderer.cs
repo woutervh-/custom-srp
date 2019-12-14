@@ -3,63 +3,74 @@ using UnityEngine.Rendering;
 
 public partial class CameraRenderer
 {
-    const string bufferName = "Render Camera";
+    const string cameraBufferName = "Render Camera";
+    const string shadowBufferName = "Render Shadows";
 
     static ShaderTagId unlitShaderTagId = new ShaderTagId("SRPDefaultUnlit");
     static ShaderTagId litShaderTagId = new ShaderTagId("CustomLit");
 
-    CommandBuffer buffer = new CommandBuffer
+    CommandBuffer cameraBuffer = new CommandBuffer
     {
-        name = CameraRenderer.bufferName
+        name = cameraBufferName
     };
 
-    // Lighting lighting = new Lighting();
+    CommandBuffer shadowBuffer = new CommandBuffer
+    {
+        name = shadowBufferName
+    };
+
+    RenderTexture shadowMap;
+    ShadowRenderer shadowRenderer = new ShadowRenderer();
     LightingBuffer lighting = new LightingBuffer();
 
     public void Render(ScriptableRenderContext context, Camera camera, bool useDynamicBatching, bool useGPUInstancing)
     {
-        this.PrepareBuffer(camera);
-        this.PrepareForSceneWindow(camera);
+        PrepareBuffer(camera);
+        PrepareForSceneWindow(camera);
 
-        CullingResults? cullingResultMaybe = this.Cull(context, camera);
+        CullingResults? cullingResultMaybe = Cull(context, camera);
         if (!cullingResultMaybe.HasValue)
         {
             return;
         }
         CullingResults cullingResults = cullingResultMaybe.Value;
 
-        this.Setup(context, camera);
-        this.lighting.Setup(context, cullingResults);
-        this.DrawVisibleGeometry(context, camera, cullingResults, useDynamicBatching, useGPUInstancing);
-        this.DrawUnsupportedShaders(context, camera, cullingResults);
-        this.DrawGizmos(context, camera);
-        this.Submit(context);
+        RenderShadows(context, cullingResults);
+
+        Setup(context, camera);
+        lighting.Setup(context, cullingResults);
+        DrawVisibleGeometry(context, camera, cullingResults, useDynamicBatching, useGPUInstancing);
+        DrawUnsupportedShaders(context, camera, cullingResults);
+        DrawGizmos(context, camera);
+        Submit(context);
+
+        RenderTexture.ReleaseTemporary(shadowMap);
     }
 
     void Setup(ScriptableRenderContext context, Camera camera)
     {
         context.SetupCameraProperties(camera);
         CameraClearFlags flags = camera.clearFlags;
-        this.buffer.ClearRenderTarget(
+        cameraBuffer.ClearRenderTarget(
             flags <= CameraClearFlags.Depth,
             flags == CameraClearFlags.Color,
             flags == CameraClearFlags.Color ? camera.backgroundColor.linear : Color.clear
         );
-        this.buffer.BeginSample(SampleName);
-        this.ExecuteBuffer(context);
+        cameraBuffer.BeginSample(SampleName);
+        ExecuteBuffer(context);
     }
 
     void Submit(ScriptableRenderContext context)
     {
-        this.buffer.EndSample(SampleName);
-        this.ExecuteBuffer(context);
+        cameraBuffer.EndSample(SampleName);
+        ExecuteBuffer(context);
         context.Submit();
     }
 
     void ExecuteBuffer(ScriptableRenderContext context)
     {
-        context.ExecuteCommandBuffer(this.buffer);
-        this.buffer.Clear();
+        context.ExecuteCommandBuffer(cameraBuffer);
+        cameraBuffer.Clear();
     }
 
     void DrawVisibleGeometry(ScriptableRenderContext context, Camera camera, CullingResults cullingResults, bool useDynamicBatching, bool useGPUInstancing)
@@ -98,5 +109,13 @@ public partial class CameraRenderer
             return context.Cull(ref cullingParameters);
         }
         return null;
+    }
+
+    void RenderShadows(ScriptableRenderContext context, CullingResults cullingResults)
+    {
+        shadowMap = RenderTexture.GetTemporary(512, 512, 16, RenderTextureFormat.Shadowmap);
+        shadowMap.filterMode = FilterMode.Bilinear;
+        shadowMap.wrapMode = TextureWrapMode.Clamp;
+        shadowRenderer.Render(context, cullingResults, shadowBuffer, shadowMap);
     }
 }

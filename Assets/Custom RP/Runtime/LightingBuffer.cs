@@ -78,6 +78,12 @@ public class LightingBuffer
     void SetupLights(CullingResults cullingResults)
     {
         NativeArray<VisibleLight> visibleLights = cullingResults.visibleLights;
+
+        if (visibleLights.Length <= 0)
+        {
+            return;
+        }
+
         lightsPositions = new Vector4[visibleLights.Length];
         lightsColors = new Vector4[visibleLights.Length];
         lightsAttenuations = new Vector4[visibleLights.Length];
