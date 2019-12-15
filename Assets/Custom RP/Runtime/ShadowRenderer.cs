@@ -5,9 +5,13 @@ public class ShadowRenderer
 {
     const string bufferName = "Render Shadows";
     const string SampleName = bufferName;
+    const string shadowsSoftKeyword = "_SHADOWS_SOFT";
 
     static int shadowMapId = Shader.PropertyToID("_ShadowMap");
     static int worldToShadowMatrixId = Shader.PropertyToID("_WorldToShadowMatrix");
+    static int shadowBiasId = Shader.PropertyToID("_ShadowBias");
+    static int shadowStrengthId = Shader.PropertyToID("_ShadowStrength");
+    static int shadowMapSizeId = Shader.PropertyToID("_ShadowMapSize");
 
     public void Render(ScriptableRenderContext context, CullingResults cullingResults, CommandBuffer buffer, RenderTexture shadowMap)
     {
@@ -19,6 +23,8 @@ public class ShadowRenderer
         cullingResults.ComputeSpotShadowMatricesAndCullingPrimitives(0, out viewMatrix, out projectionMatrix, out splitData);
 
         buffer.SetViewProjectionMatrices(viewMatrix, projectionMatrix);
+        buffer.SetGlobalFloat(shadowBiasId, cullingResults.visibleLights[0].light.shadowBias);
+        buffer.SetGlobalFloat(shadowStrengthId, cullingResults.visibleLights[0].light.shadowStrength);
         context.ExecuteCommandBuffer(buffer);
         buffer.Clear();
 
@@ -38,6 +44,10 @@ public class ShadowRenderer
         Matrix4x4 worldToShadowMatrix = scaleOffset * (projectionMatrix * viewMatrix);
         buffer.SetGlobalMatrix(worldToShadowMatrixId, worldToShadowMatrix);
         buffer.SetGlobalTexture(shadowMapId, shadowMap);
+        float invShadowMapSize = 1f / shadowMap.width;
+        buffer.SetGlobalVector(shadowMapSizeId, new Vector4(invShadowMapSize, invShadowMapSize, shadowMap.width, shadowMap.width));
+
+        CoreUtils.SetKeyword(buffer, shadowsSoftKeyword, cullingResults.visibleLights[0].light.shadows == LightShadows.Soft);
 
         Submit(context, buffer);
     }

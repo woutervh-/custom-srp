@@ -12,6 +12,8 @@ CBUFFER_END
 
 CBUFFER_START(_ShadowBuffer)
     float4x4 _WorldToShadowMatrix;
+    float _ShadowStrength;
+    float4 _ShadowMapSize;
 CBUFFER_END
 
 TEXTURE2D_SHADOW(_ShadowMap);

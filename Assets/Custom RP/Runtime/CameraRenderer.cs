@@ -23,7 +23,7 @@ public partial class CameraRenderer
     ShadowRenderer shadowRenderer = new ShadowRenderer();
     LightingBuffer lighting = new LightingBuffer();
 
-    public void Render(ScriptableRenderContext context, Camera camera, bool useDynamicBatching, bool useGPUInstancing)
+    public void Render(ScriptableRenderContext context, Camera camera, bool useDynamicBatching, bool useGPUInstancing, int shadowMapSize)
     {
         PrepareBuffer(camera);
         PrepareForSceneWindow(camera);
@@ -35,7 +35,7 @@ public partial class CameraRenderer
         }
         CullingResults cullingResults = cullingResultMaybe.Value;
 
-        RenderShadows(context, cullingResults);
+        RenderShadows(context, cullingResults, shadowMapSize);
 
         Setup(context, camera);
         lighting.Setup(context, cullingResults);
@@ -111,9 +111,9 @@ public partial class CameraRenderer
         return null;
     }
 
-    void RenderShadows(ScriptableRenderContext context, CullingResults cullingResults)
+    void RenderShadows(ScriptableRenderContext context, CullingResults cullingResults, int shadowMapSize)
     {
-        shadowMap = RenderTexture.GetTemporary(512, 512, 16, RenderTextureFormat.Shadowmap);
+        shadowMap = RenderTexture.GetTemporary(shadowMapSize, shadowMapSize, 16, RenderTextureFormat.Shadowmap);
         shadowMap.filterMode = FilterMode.Bilinear;
         shadowMap.wrapMode = TextureWrapMode.Clamp;
         shadowRenderer.Render(context, cullingResults, shadowBuffer, shadowMap);

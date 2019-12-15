@@ -5,12 +5,14 @@ public class CustomRenderPipeline : RenderPipeline
 {
     bool useDynamicBatching;
     bool useGPUInstancing;
+    int shadowMapSize;
     CameraRenderer cameraRenderer = new CameraRenderer();
 
-    public CustomRenderPipeline(bool useDynamicBatching, bool useGPUInstancing, bool useSRPBatcher)
+    public CustomRenderPipeline(bool useDynamicBatching, bool useGPUInstancing, bool useSRPBatcher, int shadowMapSize)
     {
         this.useDynamicBatching = useDynamicBatching;
         this.useGPUInstancing = useGPUInstancing;
+        this.shadowMapSize = shadowMapSize;
         GraphicsSettings.useScriptableRenderPipelineBatching = useSRPBatcher;
         GraphicsSettings.lightsUseLinearIntensity = true;
     }
@@ -19,7 +21,7 @@ public class CustomRenderPipeline : RenderPipeline
     {
         foreach (Camera camera in cameras)
         {
-            this.cameraRenderer.Render(context, camera, useDynamicBatching, useGPUInstancing);
+            this.cameraRenderer.Render(context, camera, useDynamicBatching, useGPUInstancing, shadowMapSize);
         }
     }
 }
