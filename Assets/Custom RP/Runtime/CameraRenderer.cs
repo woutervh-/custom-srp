@@ -1,17 +1,32 @@
+using System;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
 
-public partial class CameraRenderer
+public class CameraRenderer : IDisposable
 {
-    const string cameraBufferName = "Render Camera";
+    const string lightBufferName = "Lighting";
     const string shadowBufferName = "Render Shadows";
+    const string shadowsSoftKeyword = "_SHADOWS_SOFT";
+    const string shadowsHardKeyword = "_SHADOWS_HARD";
 
     static ShaderTagId unlitShaderTagId = new ShaderTagId("SRPDefaultUnlit");
     static ShaderTagId litShaderTagId = new ShaderTagId("CustomLit");
 
-    CommandBuffer cameraBuffer = new CommandBuffer
+#if UNITY_EDITOR
+    static ShaderTagId[] legacyShaderTagIds = {
+        new ShaderTagId("Always"),
+        new ShaderTagId("ForwardBase"),
+        new ShaderTagId("PrepassBase"),
+        new ShaderTagId("Vertex"),
+        new ShaderTagId("VertexLMRGBM"),
+        new ShaderTagId("VertexLM")
+    };
+#endif
+
+    CommandBuffer lightingBuffer = new CommandBuffer
     {
-        name = cameraBufferName
+        name = lightBufferName
     };
 
     CommandBuffer shadowBuffer = new CommandBuffer
@@ -19,65 +34,144 @@ public partial class CameraRenderer
         name = shadowBufferName
     };
 
-    RenderTexture shadowMaps;
-    ShadowRenderer shadowRenderer = new ShadowRenderer();
-    Lighting lighting = new Lighting();
-
-    public void Render(ScriptableRenderContext context, Camera camera, bool useDynamicBatching, bool useGPUInstancing, int shadowMapSize)
+    public void Render(ref ScriptableRenderContext context, Camera camera, bool useDynamicBatching, bool useGPUInstancing, int shadowMapSize)
     {
-        PrepareBuffer(camera);
-        PrepareForSceneWindow(camera);
+#if UNITY_EDITOR
+        if (camera.cameraType == CameraType.SceneView)
+        {
+            ScriptableRenderContext.EmitWorldGeometryForSceneView(camera);
+        }
+#endif
 
-        CullingResults? cullingResultMaybe = Cull(context, camera);
-        if (!cullingResultMaybe.HasValue)
+        ScriptableCullingParameters cullingParameters;
+        if (!camera.TryGetCullingParameters(out cullingParameters))
         {
             return;
         }
-        CullingResults cullingResults = cullingResultMaybe.Value;
 
-        lighting.Setup(context, cullingResults);
+        CullingResults cullingResults = context.Cull(ref cullingParameters);
 
-        if (cullingResults.visibleLights.Length > 0)
+        lightingBuffer.BeginSample(lightingBuffer.name);
+        ShaderLighting.LightingValues lightingValues = ShaderLighting.CreateLightingValues(ref cullingResults);
+        lightingBuffer.EndSample(lightingBuffer.name);
+
+        RenderTexture shadowMaps = null;
+        using (ShaderLighting.LightingBuffers lightingBuffers = new ShaderLighting.LightingBuffers(ref cullingResults, lightingValues))
         {
-            RenderShadows(context, cullingResults, shadowMapSize);
+            lightingBuffer.BeginSample(lightingBuffer.name);
+            ShaderInput.SetLightsCount(lightingBuffer, cullingResults.lightAndReflectionProbeIndexCount);
+            ShaderInput.SetLightsPositions(lightingBuffer, lightingBuffers.positionsBuffer);
+            ShaderInput.SetLightsColors(lightingBuffer, lightingBuffers.colorsBuffer);
+            ShaderInput.SetLightsAttenuations(lightingBuffer, lightingBuffers.attenuationsBuffer);
+            ShaderInput.SetLightsSpotDirections(lightingBuffer, lightingBuffers.spotDirectionsBuffer);
+            ShaderInput.SetLightIndices(lightingBuffer, lightingBuffers.lightIndicesBuffer);
+            ShaderInput.SetShadowData(lightingBuffer, lightingBuffers.shadowDataBuffer);
+            ShaderInput.SetWorldToShadowMatrices(lightingBuffer, lightingBuffers.worldToShadowMatricesBuffer);
+            lightingBuffer.EndSample(lightingBuffer.name);
+            SubmitBuffer(ref context, lightingBuffer);
+
+            if (cullingResults.visibleLights.Length > 0)
+            {
+                shadowBuffer.BeginSample(shadowBuffer.name);
+                SubmitBuffer(ref context, shadowBuffer);
+                shadowMaps = RenderTexture.GetTemporary(shadowMapSize, shadowMapSize, 16, RenderTextureFormat.Shadowmap);
+                shadowMaps.dimension = TextureDimension.Tex2DArray;
+                shadowMaps.volumeDepth = cullingResults.visibleLights.Length;
+                shadowMaps.filterMode = FilterMode.Bilinear;
+                shadowMaps.wrapMode = TextureWrapMode.Clamp;
+                SubmitBuffer(ref context, shadowBuffer);
+
+                bool hasSoftShadows = false;
+                bool hasHardShadows = false;
+                for (int i = 0; i < cullingResults.visibleLights.Length; i++)
+                {
+                    CommandBuffer lightShadowBuffer = new CommandBuffer
+                    {
+                        name = cullingResults.visibleLights[i].light.name
+                    };
+
+                    CoreUtils.SetRenderTarget(lightShadowBuffer, shadowMaps, ClearFlag.Depth, 0, CubemapFace.Unknown, i);
+
+                    if (lightingValues.shadowData[i].x <= 0f)
+                    {
+                        continue;
+                    }
+
+                    if (lightingValues.shadowData[i].y <= 0f)
+                    {
+                        hasSoftShadows = true;
+                    }
+                    else
+                    {
+                        hasHardShadows = true;
+                    }
+
+                    lightShadowBuffer.BeginSample(lightShadowBuffer.name);
+                    lightShadowBuffer.SetViewProjectionMatrices(lightingValues.viewMatrices[i], lightingValues.projectionMatrices[i]);
+                    ShaderInput.SetShadowBias(lightShadowBuffer, cullingResults.visibleLights[i].light.shadowBias);
+                    SubmitBuffer(ref context, lightShadowBuffer);
+
+                    ShadowDrawingSettings shadowSettings = new ShadowDrawingSettings(cullingResults, i);
+                    context.DrawShadows(ref shadowSettings);
+
+                    lightShadowBuffer.EndSample(lightShadowBuffer.name);
+                    SubmitBuffer(ref context, lightShadowBuffer);
+                }
+
+                CoreUtils.SetKeyword(shadowBuffer, shadowsSoftKeyword, hasSoftShadows);
+                CoreUtils.SetKeyword(shadowBuffer, shadowsHardKeyword, hasHardShadows);
+                ShaderInput.SetShadowMaps(shadowBuffer, shadowMaps);
+                ShaderInput.SetShadowMapsSize(shadowBuffer, new Vector4(1f / shadowMaps.width, 1f / shadowMaps.width, shadowMaps.width, shadowMaps.width));
+                shadowBuffer.EndSample(shadowBuffer.name);
+                SubmitBuffer(ref context, shadowBuffer);
+            }
+
+            CommandBuffer cameraBuffer = new CommandBuffer
+            {
+                name = camera.name
+            };
+
+            context.SetupCameraProperties(camera);
+            CameraClearFlags flags = camera.clearFlags;
+            cameraBuffer.ClearRenderTarget(
+                flags <= CameraClearFlags.Depth,
+                flags == CameraClearFlags.Color,
+                flags == CameraClearFlags.Color ? camera.backgroundColor.linear : Color.clear
+            );
+            cameraBuffer.BeginSample(cameraBuffer.name);
+            SubmitBuffer(ref context, cameraBuffer);
+            DrawVisibleGeometry(ref context, camera, ref cullingResults, useDynamicBatching, useGPUInstancing);
+            cameraBuffer.EndSample(cameraBuffer.name);
+            SubmitBuffer(ref context, cameraBuffer);
+
+#if UNITY_EDITOR
+            DrawUnsupportedShaders(ref context, camera, ref cullingResults);
+            DrawGizmos(ref context, camera);
+#endif
+            context.Submit();
+
+            cameraBuffer.Release();
+
+            if (shadowMaps != null)
+            {
+                shadowMaps.Release();
+            }
         }
-
-        Setup(context, camera);
-        DrawVisibleGeometry(context, camera, cullingResults, useDynamicBatching, useGPUInstancing);
-        DrawUnsupportedShaders(context, camera, cullingResults);
-        DrawGizmos(context, camera);
-        Submit(context);
-
-        RenderTexture.ReleaseTemporary(shadowMaps);
     }
 
-    void Setup(ScriptableRenderContext context, Camera camera)
+    void SubmitBuffer(ref ScriptableRenderContext context, CommandBuffer buffer)
     {
-        context.SetupCameraProperties(camera);
-        CameraClearFlags flags = camera.clearFlags;
-        cameraBuffer.ClearRenderTarget(
-            flags <= CameraClearFlags.Depth,
-            flags == CameraClearFlags.Color,
-            flags == CameraClearFlags.Color ? camera.backgroundColor.linear : Color.clear
-        );
-        cameraBuffer.BeginSample(SampleName);
-        ExecuteBuffer(context);
+        context.ExecuteCommandBuffer(buffer);
+        buffer.Clear();
     }
 
-    void Submit(ScriptableRenderContext context)
+    public void Dispose()
     {
-        cameraBuffer.EndSample(SampleName);
-        ExecuteBuffer(context);
-        context.Submit();
+        lightingBuffer.Dispose();
+        shadowBuffer.Dispose();
     }
 
-    void ExecuteBuffer(ScriptableRenderContext context)
-    {
-        context.ExecuteCommandBuffer(cameraBuffer);
-        cameraBuffer.Clear();
-    }
-
-    void DrawVisibleGeometry(ScriptableRenderContext context, Camera camera, CullingResults cullingResults, bool useDynamicBatching, bool useGPUInstancing)
+    void DrawVisibleGeometry(ref ScriptableRenderContext context, Camera camera, ref CullingResults cullingResults, bool useDynamicBatching, bool useGPUInstancing)
     {
         SortingSettings sortingSettings = new SortingSettings(camera)
         {
@@ -95,7 +189,6 @@ public partial class CameraRenderer
         drawingSettings.SetShaderPassName(1, litShaderTagId);
         FilteringSettings filteringSettings = new FilteringSettings(RenderQueueRange.opaque);
         context.DrawRenderers(cullingResults, ref drawingSettings, ref filteringSettings);
-
         context.DrawSkybox(camera);
 
         sortingSettings.criteria = SortingCriteria.CommonTransparent;
@@ -104,24 +197,30 @@ public partial class CameraRenderer
         context.DrawRenderers(cullingResults, ref drawingSettings, ref filteringSettings);
     }
 
-    CullingResults? Cull(ScriptableRenderContext context, Camera camera)
+#if UNITY_EDITOR
+    void DrawUnsupportedShaders(ref ScriptableRenderContext context, Camera camera, ref CullingResults cullingResults)
     {
-        ScriptableCullingParameters cullingParameters;
-        if (camera.TryGetCullingParameters(out cullingParameters))
+        Material errorMaterial = new Material(Shader.Find("Hidden/InternalErrorShader"));
+        DrawingSettings drawingSettings = new DrawingSettings()
         {
-            return context.Cull(ref cullingParameters);
+            sortingSettings = new SortingSettings(camera),
+            overrideMaterial = errorMaterial
+        };
+        for (int i = 0; i < legacyShaderTagIds.Length; i++)
+        {
+            drawingSettings.SetShaderPassName(i, legacyShaderTagIds[i]);
         }
-        return null;
+        FilteringSettings filteringSettings = FilteringSettings.defaultValue;
+        context.DrawRenderers(cullingResults, ref drawingSettings, ref filteringSettings);
     }
 
-    void RenderShadows(ScriptableRenderContext context, CullingResults cullingResults, int shadowMapSize)
+    void DrawGizmos(ref ScriptableRenderContext context, Camera camera)
     {
-        shadowMaps = RenderTexture.GetTemporary(shadowMapSize, shadowMapSize, 16, RenderTextureFormat.Shadowmap);
-        shadowMaps.dimension = TextureDimension.Tex2DArray;
-        shadowMaps.volumeDepth = cullingResults.visibleLights.Length;
-        shadowMaps.filterMode = FilterMode.Bilinear;
-        shadowMaps.wrapMode = TextureWrapMode.Clamp;
-
-        shadowRenderer.Render(context, cullingResults, shadowBuffer, shadowMaps, lighting.shadowData);
+        if (Handles.ShouldRenderGizmos())
+        {
+            context.DrawGizmos(camera, GizmoSubset.PreImageEffects);
+            context.DrawGizmos(camera, GizmoSubset.PostImageEffects);
+        }
     }
+#endif
 }
