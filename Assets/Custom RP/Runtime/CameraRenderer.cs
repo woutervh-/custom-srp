@@ -8,7 +8,6 @@ public partial class CameraRenderer
 
     static ShaderTagId unlitShaderTagId = new ShaderTagId("SRPDefaultUnlit");
     static ShaderTagId litShaderTagId = new ShaderTagId("CustomLit");
-    static int shadowMapsId = Shader.PropertyToID("_ShadowMaps");
 
     CommandBuffer cameraBuffer = new CommandBuffer
     {
