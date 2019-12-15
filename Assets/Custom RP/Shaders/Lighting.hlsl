@@ -1,23 +1,28 @@
 #ifndef CUSTOM_LIGHTING_INCLUDED
 #define CUSTOM_LIGHTING_INCLUDED
 
-float GetShadowAttenuation (float3 worldPosition) {
-    float4 shadowPosition = mul(_WorldToShadowMatrix, float4(worldPosition, 1.0));
-    shadowPosition.xyz /= shadowPosition.w;
-    float attenuation = SAMPLE_TEXTURE2D_SHADOW(_ShadowMap, sampler_ShadowMap, shadowPosition.xyz);
+float GetShadowAttenuation (Light light, float3 worldPosition) {
+    if (light.shadowData.x <= 0) {
+        return 1.0;
+    }
 
-    #if defined(_SHADOWS_SOFT)
+    float4 shadowPosition = mul(light.worldToShadowMatrix, float4(worldPosition, 1.0));
+    shadowPosition.xyz /= shadowPosition.w;
+    float attenuation;
+
+    if (light.shadowData.y == 0) {
+        attenuation = SAMPLE_TEXTURE2D_ARRAY_SHADOW(_ShadowMaps, sampler_ShadowMaps, shadowPosition.xyz, light.index);
+    } else {
         real tentWeights[9];
         real2 tentUVs[9];
         SampleShadow_ComputeSamples_Tent_5x5(_ShadowMapSize, shadowPosition.xy, tentWeights, tentUVs);
-
         attenuation = 0;
         for (int i = 0; i < 9; i++) {
-            attenuation += tentWeights[i] * SAMPLE_TEXTURE2D_SHADOW(_ShadowMap, sampler_ShadowMap, float3(tentUVs[i].xy, shadowPosition.z));
+            attenuation += tentWeights[i] * SAMPLE_TEXTURE2D_ARRAY_SHADOW(_ShadowMaps, sampler_ShadowMaps, float3(tentUVs[i].xy, shadowPosition.z), light.index);
         }
-    #endif
+    }
 
-    return lerp(1, attenuation, _ShadowStrength);
+    return lerp(1, attenuation, light.shadowData.x);
 }
 
 float3 GetIncomingLight (Surface surface, Light light) {
@@ -34,7 +39,7 @@ float3 GetIncomingLight (Surface surface, Light light) {
     spotFade = saturate(spotFade * light.attenuation.z + light.attenuation.w);
     spotFade *= spotFade;
 
-    float shadowAttenuation = GetShadowAttenuation(surface.worldPosition);
+    float shadowAttenuation = GetShadowAttenuation(light, surface.worldPosition);
 
     diffuse *= shadowAttenuation * spotFade * rangeFade / distanceSqr;
 

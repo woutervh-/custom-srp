@@ -8,6 +8,7 @@ public partial class CameraRenderer
 
     static ShaderTagId unlitShaderTagId = new ShaderTagId("SRPDefaultUnlit");
     static ShaderTagId litShaderTagId = new ShaderTagId("CustomLit");
+    static int shadowMapsId = Shader.PropertyToID("_ShadowMaps");
 
     CommandBuffer cameraBuffer = new CommandBuffer
     {
@@ -19,9 +20,9 @@ public partial class CameraRenderer
         name = shadowBufferName
     };
 
-    RenderTexture shadowMap;
+    RenderTexture shadowMaps;
     ShadowRenderer shadowRenderer = new ShadowRenderer();
-    LightingBuffer lighting = new LightingBuffer();
+    Lighting lighting = new Lighting();
 
     public void Render(ScriptableRenderContext context, Camera camera, bool useDynamicBatching, bool useGPUInstancing, int shadowMapSize)
     {
@@ -35,16 +36,20 @@ public partial class CameraRenderer
         }
         CullingResults cullingResults = cullingResultMaybe.Value;
 
-        RenderShadows(context, cullingResults, shadowMapSize);
+        lighting.Setup(context, cullingResults);
+
+        if (cullingResults.visibleLights.Length > 0)
+        {
+            RenderShadows(context, cullingResults, shadowMapSize);
+        }
 
         Setup(context, camera);
-        lighting.Setup(context, cullingResults);
         DrawVisibleGeometry(context, camera, cullingResults, useDynamicBatching, useGPUInstancing);
         DrawUnsupportedShaders(context, camera, cullingResults);
         DrawGizmos(context, camera);
         Submit(context);
 
-        RenderTexture.ReleaseTemporary(shadowMap);
+        RenderTexture.ReleaseTemporary(shadowMaps);
     }
 
     void Setup(ScriptableRenderContext context, Camera camera)
@@ -113,9 +118,12 @@ public partial class CameraRenderer
 
     void RenderShadows(ScriptableRenderContext context, CullingResults cullingResults, int shadowMapSize)
     {
-        shadowMap = RenderTexture.GetTemporary(shadowMapSize, shadowMapSize, 16, RenderTextureFormat.Shadowmap);
-        shadowMap.filterMode = FilterMode.Bilinear;
-        shadowMap.wrapMode = TextureWrapMode.Clamp;
-        shadowRenderer.Render(context, cullingResults, shadowBuffer, shadowMap);
+        shadowMaps = RenderTexture.GetTemporary(shadowMapSize, shadowMapSize, 16, RenderTextureFormat.Shadowmap);
+        shadowMaps.dimension = TextureDimension.Tex2DArray;
+        shadowMaps.volumeDepth = cullingResults.visibleLights.Length;
+        shadowMaps.filterMode = FilterMode.Bilinear;
+        shadowMaps.wrapMode = TextureWrapMode.Clamp;
+
+        shadowRenderer.Render(context, cullingResults, shadowBuffer, shadowMaps, lighting.shadowData);
     }
 }

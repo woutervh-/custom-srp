@@ -11,19 +11,22 @@ CBUFFER_START(_CustomLight)
 CBUFFER_END
 
 CBUFFER_START(_ShadowBuffer)
-    float4x4 _WorldToShadowMatrix;
-    float _ShadowStrength;
+    StructuredBuffer<float4x4> _WorldToShadowMatrices;
+    StructuredBuffer<float4> _ShadowData;
     float4 _ShadowMapSize;
 CBUFFER_END
 
-TEXTURE2D_SHADOW(_ShadowMap);
-SAMPLER_CMP(sampler_ShadowMap);
+TEXTURE2D_ARRAY_SHADOW(_ShadowMaps);
+SAMPLER_CMP(sampler_ShadowMaps);
 
 struct Light {
+    int index;
     float4 position;
     float4 color;
     float4 attenuation;
     float4 spotDirection;
+    float4 shadowData;
+    float4x4 worldToShadowMatrix;
 };
 
 int GetLightIndex(uint i) {
@@ -45,10 +48,13 @@ float3 GetLightDirection (Surface surface, Light light) {
 
 Light GetLight (int index) {
     Light light;
+    light.index = index;
     light.position = _LightsPositions[index];
     light.color = _LightsColors[index];
     light.attenuation = _LightsAttenuations[index];
     light.spotDirection = _LightsSpotDirections[index];
+    light.shadowData = _ShadowData[index];
+    light.worldToShadowMatrix = _WorldToShadowMatrices[index];
     return light;
 }
 

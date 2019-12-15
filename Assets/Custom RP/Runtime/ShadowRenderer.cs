@@ -7,56 +7,90 @@ public class ShadowRenderer
     const string SampleName = bufferName;
     const string shadowsSoftKeyword = "_SHADOWS_SOFT";
 
-    static int shadowMapId = Shader.PropertyToID("_ShadowMap");
-    static int worldToShadowMatrixId = Shader.PropertyToID("_WorldToShadowMatrix");
+    static int shadowMapsId = Shader.PropertyToID("_ShadowMaps");
+    static int worldToShadowMatricesId = Shader.PropertyToID("_WorldToShadowMatrices");
     static int shadowBiasId = Shader.PropertyToID("_ShadowBias");
-    static int shadowStrengthId = Shader.PropertyToID("_ShadowStrength");
+    static int shadowDataId = Shader.PropertyToID("_ShadowData");
     static int shadowMapSizeId = Shader.PropertyToID("_ShadowMapSize");
 
-    public void Render(ScriptableRenderContext context, CullingResults cullingResults, CommandBuffer buffer, RenderTexture shadowMap)
+    ComputeBuffer worldToShadowMatricesBuffer;
+    ComputeBuffer shadowDataBuffer;
+
+    public void Render(ScriptableRenderContext context, CullingResults cullingResults, CommandBuffer buffer, RenderTexture shadowMaps, Vector4[] shadowData)
     {
-        Setup(context, buffer, shadowMap);
+        Setup(context, buffer, shadowMaps);
 
-        Matrix4x4 viewMatrix;
-        Matrix4x4 projectionMatrix;
-        ShadowSplitData splitData;
-        cullingResults.ComputeSpotShadowMatricesAndCullingPrimitives(0, out viewMatrix, out projectionMatrix, out splitData);
+        Matrix4x4[] worldToShadowMatrices = new Matrix4x4[cullingResults.visibleLights.Length];
 
-        buffer.SetViewProjectionMatrices(viewMatrix, projectionMatrix);
-        buffer.SetGlobalFloat(shadowBiasId, cullingResults.visibleLights[0].light.shadowBias);
-        buffer.SetGlobalFloat(shadowStrengthId, cullingResults.visibleLights[0].light.shadowStrength);
-        context.ExecuteCommandBuffer(buffer);
-        buffer.Clear();
-
-        ShadowDrawingSettings shadowSettings = new ShadowDrawingSettings(cullingResults, 0);
-        context.DrawShadows(ref shadowSettings);
-
-        if (SystemInfo.usesReversedZBuffer)
+        for (int i = 0; i < cullingResults.visibleLights.Length; i++)
         {
-            projectionMatrix.m20 = -projectionMatrix.m20;
-            projectionMatrix.m21 = -projectionMatrix.m21;
-            projectionMatrix.m22 = -projectionMatrix.m22;
-            projectionMatrix.m23 = -projectionMatrix.m23;
+            CoreUtils.SetRenderTarget(buffer, shadowMaps, ClearFlag.Depth, 0, CubemapFace.Unknown, i);
+
+            if (shadowData[i].x <= 0f)
+            {
+                continue;
+            }
+
+            Matrix4x4 viewMatrix;
+            Matrix4x4 projectionMatrix;
+            ShadowSplitData splitData;
+            if (!cullingResults.ComputeSpotShadowMatricesAndCullingPrimitives(i, out viewMatrix, out projectionMatrix, out splitData))
+            {
+                shadowData[i].x = 0f;
+                continue;
+            }
+
+            buffer.SetViewProjectionMatrices(viewMatrix, projectionMatrix);
+            buffer.SetGlobalFloat(shadowBiasId, cullingResults.visibleLights[i].light.shadowBias);
+            context.ExecuteCommandBuffer(buffer);
+            buffer.Clear();
+
+            ShadowDrawingSettings shadowSettings = new ShadowDrawingSettings(cullingResults, i);
+            context.DrawShadows(ref shadowSettings);
+
+            if (SystemInfo.usesReversedZBuffer)
+            {
+                projectionMatrix.m20 = -projectionMatrix.m20;
+                projectionMatrix.m21 = -projectionMatrix.m21;
+                projectionMatrix.m22 = -projectionMatrix.m22;
+                projectionMatrix.m23 = -projectionMatrix.m23;
+            }
+            Matrix4x4 scaleOffset = Matrix4x4.identity;
+            scaleOffset.m00 = scaleOffset.m11 = scaleOffset.m22 = 0.5f;
+            scaleOffset.m03 = scaleOffset.m13 = scaleOffset.m23 = 0.5f;
+            worldToShadowMatrices[i] = scaleOffset * (projectionMatrix * viewMatrix);
         }
-        Matrix4x4 scaleOffset = Matrix4x4.identity;
-        scaleOffset.m00 = scaleOffset.m11 = scaleOffset.m22 = 0.5f;
-        scaleOffset.m03 = scaleOffset.m13 = scaleOffset.m23 = 0.5f;
-        Matrix4x4 worldToShadowMatrix = scaleOffset * (projectionMatrix * viewMatrix);
-        buffer.SetGlobalMatrix(worldToShadowMatrixId, worldToShadowMatrix);
-        buffer.SetGlobalTexture(shadowMapId, shadowMap);
-        float invShadowMapSize = 1f / shadowMap.width;
-        buffer.SetGlobalVector(shadowMapSizeId, new Vector4(invShadowMapSize, invShadowMapSize, shadowMap.width, shadowMap.width));
 
         CoreUtils.SetKeyword(buffer, shadowsSoftKeyword, cullingResults.visibleLights[0].light.shadows == LightShadows.Soft);
+        buffer.SetGlobalTexture(shadowMapsId, shadowMaps);
+        float invShadowMapSize = 1f / shadowMaps.width;
+        buffer.SetGlobalVector(shadowMapSizeId, new Vector4(invShadowMapSize, invShadowMapSize, shadowMaps.width, shadowMaps.width));
+
+        if (worldToShadowMatricesBuffer != null)
+        {
+            worldToShadowMatricesBuffer.Release();
+        }
+        worldToShadowMatricesBuffer = new ComputeBuffer(cullingResults.visibleLights.Length, 4 * 4 * 4);
+        worldToShadowMatricesBuffer.SetData(worldToShadowMatrices);
+
+        if (shadowDataBuffer != null)
+        {
+            shadowDataBuffer.Release();
+        }
+        shadowDataBuffer = new ComputeBuffer(cullingResults.visibleLights.Length, 4 * 4);
+        shadowDataBuffer.SetData(shadowData);
+
+        buffer.SetGlobalBuffer(worldToShadowMatricesId, worldToShadowMatricesBuffer);
+        buffer.SetGlobalBuffer(shadowDataId, shadowDataBuffer);
 
         Submit(context, buffer);
     }
 
     void Setup(ScriptableRenderContext context, CommandBuffer buffer, RenderTexture shadowMap)
     {
-        CoreUtils.SetRenderTarget(buffer, shadowMap, RenderBufferLoadAction.DontCare, RenderBufferStoreAction.Store, ClearFlag.Depth);
         buffer.BeginSample(SampleName);
         ExecuteBuffer(context, buffer);
+        buffer.Clear();
     }
 
     void Submit(ScriptableRenderContext context, CommandBuffer buffer)

@@ -4,20 +4,26 @@ using UnityEngine.Rendering;
 
 public class Lighting
 {
-    const int maxLightCount = 4;
     const string bufferName = "Lighting";
 
-    static int lightCountId = Shader.PropertyToID("_LightCount");
-    static int lightColorsId = Shader.PropertyToID("_LightColors");
-    static int lightDirectionsId = Shader.PropertyToID("_LightDirections");
-    static int lightPositionsId = Shader.PropertyToID("_LightPositions");
-    static int lightAttenuationsId = Shader.PropertyToID("_LightAttenuations");
-    static int shadowMapId = Shader.PropertyToID("_ShadowMap");
+    static int lightsPositionsId = Shader.PropertyToID("_LightsPositions");
+    static int lightsColorsId = Shader.PropertyToID("_LightsColors");
+    static int lightsAttenuationsId = Shader.PropertyToID("_LightsAttenuations");
+    static int lightsSpotDirectionsId = Shader.PropertyToID("_LightsSpotDirections");
+    static int lightsIndicesId = Shader.PropertyToID("_LightsIndices");
+    static int lightsCountId = Shader.PropertyToID("_LightsCount");
 
-    static Vector4[] lightColors = new Vector4[maxLightCount];
-    static Vector4[] lightDirections = new Vector4[maxLightCount];
-    static Vector4[] lightPositions = new Vector4[maxLightCount];
-    static Vector4[] lightAttenuations = new Vector4[maxLightCount];
+    public Vector4[] shadowData;
+
+    Vector4[] lightsPositions;
+    Vector4[] lightsColors;
+    Vector4[] lightsAttenuations;
+    Vector4[] lightsSpotDirections;
+    ComputeBuffer lightsPositionsBuffer;
+    ComputeBuffer lightsColorsBuffer;
+    ComputeBuffer lightsAttenuationsBuffer;
+    ComputeBuffer lightsSpotDirectionsBuffer;
+    ComputeBuffer lightsIndices;
 
     CommandBuffer buffer = new CommandBuffer
     {
@@ -27,81 +33,138 @@ public class Lighting
     public void Setup(ScriptableRenderContext context, CullingResults cullingResults)
     {
         buffer.BeginSample(bufferName);
-        this.SetupLights(cullingResults);
+        SetupLights(cullingResults);
         buffer.EndSample(bufferName);
         context.ExecuteCommandBuffer(buffer);
         buffer.Clear();
     }
 
-    void SetupDirectionalLight(int index, ref VisibleLight visibleLight)
+    void SetupDirectionalLight(int index, ref VisibleLight visibleLight, ref CullingResults cullingResults)
     {
-        lightColors[index] = visibleLight.finalColor;
-        lightDirections[index] = -visibleLight.localToWorldMatrix.GetColumn(2);
-        lightDirections[index].w = 1f;
-        lightPositions[index] = Vector4.zero;
-        lightAttenuations[index] = Vector4.zero;
-        lightAttenuations[index].w = 1f;
+        shadowData[index] = Vector4.zero;
+
+        lightsColors[index] = visibleLight.finalColor;
+        lightsPositions[index] = -visibleLight.localToWorldMatrix.GetColumn(2);
+        lightsSpotDirections[index] = Vector4.zero;
+        lightsAttenuations[index] = Vector4.zero;
+        lightsAttenuations[index].w = 1f;
     }
 
-    void SetupPointLight(int index, ref VisibleLight visibleLight)
+    void SetupPointLight(int index, ref VisibleLight visibleLight, ref CullingResults cullingResults)
     {
-        lightColors[index] = visibleLight.finalColor;
-        lightDirections[index] = Vector4.zero;
-        lightPositions[index] = visibleLight.localToWorldMatrix.GetColumn(3);
-        lightPositions[index].w = 1f;
-        lightAttenuations[index] = Vector4.zero;
-        lightAttenuations[index].x = 1f / (visibleLight.range * visibleLight.range);
-        lightAttenuations[index].w = 1f;
+        shadowData[index] = Vector4.zero;
+
+        lightsColors[index] = visibleLight.finalColor;
+        lightsPositions[index] = visibleLight.localToWorldMatrix.GetColumn(3);
+        lightsPositions[index].w = 1f;
+        lightsSpotDirections[index] = Vector4.zero;
+        lightsAttenuations[index] = Vector4.zero;
+        lightsAttenuations[index].x = 1f / Mathf.Max(visibleLight.range * visibleLight.range, 0.00001f);
+        lightsAttenuations[index].w = 1f;
     }
 
-    void SetupSpotLight(int index, ref VisibleLight visibleLight)
+    void SetupSpotLight(int index, ref VisibleLight visibleLight, ref CullingResults cullingResults)
     {
+        shadowData[index] = Vector4.zero;
+        Bounds shadowBounds;
+        if (visibleLight.light.shadows != LightShadows.None && cullingResults.GetShadowCasterBounds(index, out shadowBounds))
+        {
+            shadowData[index].x = visibleLight.light.shadowStrength;
+            shadowData[index].y = visibleLight.light.shadows == LightShadows.Soft ? 1f : 0f;
+        }
+
         float outerRad = Mathf.Deg2Rad * 0.5f * visibleLight.spotAngle;
         float outerCos = Mathf.Cos(outerRad);
         float outerTan = Mathf.Tan(outerRad);
         float innerCos = Mathf.Cos(Mathf.Atan(((64f - 18f) / 64f) * outerTan));
-        float angleRange = Mathf.Max(innerCos - outerCos, 0f);
+        float angleRange = Mathf.Max(innerCos - outerCos, 0.00001f);
 
-        lightColors[index] = visibleLight.finalColor;
-        lightDirections[index] = -visibleLight.localToWorldMatrix.GetColumn(2);
-        lightDirections[index].w = 0f;
-        lightPositions[index] = visibleLight.localToWorldMatrix.GetColumn(3);
-        lightPositions[index].w = 1f;
-        lightAttenuations[index] = Vector4.zero;
-        lightAttenuations[index].y = 1f;
-        lightAttenuations[index].z = 1f / angleRange;
-        lightAttenuations[index].w = -outerCos / angleRange;
+        lightsColors[index] = visibleLight.finalColor;
+        lightsPositions[index] = visibleLight.localToWorldMatrix.GetColumn(3);
+        lightsPositions[index].w = 1f;
+        lightsSpotDirections[index] = -visibleLight.localToWorldMatrix.GetColumn(2);
+        lightsAttenuations[index] = Vector4.zero;
+        lightsAttenuations[index].x = 1f / Mathf.Max(visibleLight.range * visibleLight.range, 0.00001f);
+        lightsAttenuations[index].z = 1f / angleRange;
+        lightsAttenuations[index].w = -outerCos / angleRange;
     }
 
     void SetupLights(CullingResults cullingResults)
     {
+        buffer.SetGlobalInt(lightsCountId, cullingResults.lightAndReflectionProbeIndexCount);
+
         NativeArray<VisibleLight> visibleLights = cullingResults.visibleLights;
-        int lightCount = 0;
+
+        if (visibleLights.Length <= 0)
+        {
+            return;
+        }
+
+        shadowData = new Vector4[visibleLights.Length];
+        lightsPositions = new Vector4[visibleLights.Length];
+        lightsColors = new Vector4[visibleLights.Length];
+        lightsAttenuations = new Vector4[visibleLights.Length];
+        lightsSpotDirections = new Vector4[visibleLights.Length];
+
         for (int i = 0; i < visibleLights.Length; i++)
         {
             VisibleLight visibleLight = visibleLights[i];
             if (visibleLight.lightType == LightType.Directional)
             {
-                this.SetupDirectionalLight(lightCount++, ref visibleLight);
+                this.SetupDirectionalLight(i, ref visibleLight, ref cullingResults);
             }
             else if (visibleLight.lightType == LightType.Point)
             {
-                this.SetupPointLight(lightCount++, ref visibleLight);
+                this.SetupPointLight(i, ref visibleLight, ref cullingResults);
             }
             else if (visibleLight.lightType == LightType.Spot)
             {
-                this.SetupSpotLight(lightCount++, ref visibleLight);
-            }
-            if (lightCount >= maxLightCount)
-            {
-                break;
+                this.SetupSpotLight(i, ref visibleLight, ref cullingResults);
             }
         }
 
-        buffer.SetGlobalInt(lightCountId, visibleLights.Length);
-        buffer.SetGlobalVectorArray(lightColorsId, lightColors);
-        buffer.SetGlobalVectorArray(lightDirectionsId, lightDirections);
-        buffer.SetGlobalVectorArray(lightPositionsId, lightPositions);
-        buffer.SetGlobalVectorArray(lightAttenuationsId, lightAttenuations);
+        if (lightsPositionsBuffer != null)
+        {
+            lightsPositionsBuffer.Release();
+        }
+        lightsPositionsBuffer = new ComputeBuffer(visibleLights.Length, 4 * 4);
+        lightsPositionsBuffer.SetData(lightsPositions);
+
+        if (lightsColorsBuffer != null)
+        {
+            lightsColorsBuffer.Release();
+        }
+        lightsColorsBuffer = new ComputeBuffer(visibleLights.Length, 4 * 4);
+        lightsColorsBuffer.SetData(lightsColors);
+
+        if (lightsAttenuationsBuffer != null)
+        {
+            lightsAttenuationsBuffer.Release();
+        }
+        lightsAttenuationsBuffer = new ComputeBuffer(visibleLights.Length, 4 * 4);
+        lightsAttenuationsBuffer.SetData(lightsAttenuations);
+
+        if (lightsSpotDirectionsBuffer != null)
+        {
+            lightsSpotDirectionsBuffer.Release();
+        }
+        lightsSpotDirectionsBuffer = new ComputeBuffer(visibleLights.Length, 4 * 4);
+        lightsSpotDirectionsBuffer.SetData(lightsSpotDirections);
+
+        buffer.SetGlobalBuffer(lightsPositionsId, lightsPositionsBuffer);
+        buffer.SetGlobalBuffer(lightsColorsId, lightsColorsBuffer);
+        buffer.SetGlobalBuffer(lightsAttenuationsId, lightsAttenuationsBuffer);
+        buffer.SetGlobalBuffer(lightsSpotDirectionsId, lightsSpotDirectionsBuffer);
+
+        if (lightsIndices != null)
+        {
+            lightsIndices.Release();
+        }
+        if (cullingResults.lightAndReflectionProbeIndexCount >= 1)
+        {
+            lightsIndices = new ComputeBuffer(cullingResults.lightAndReflectionProbeIndexCount, 4);
+            cullingResults.FillLightAndReflectionProbeIndices(lightsIndices);
+            buffer.SetGlobalBuffer(lightsIndicesId, lightsIndices);
+        }
     }
 }
