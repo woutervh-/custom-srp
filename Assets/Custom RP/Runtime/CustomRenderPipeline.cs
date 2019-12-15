@@ -6,7 +6,8 @@ public class CustomRenderPipeline : RenderPipeline
     bool useDynamicBatching;
     bool useGPUInstancing;
     int shadowMapSize;
-    CameraRenderer cameraRenderer = new CameraRenderer();
+    // CameraRenderer cameraRenderer = new CameraRenderer();
+    CameraRenderer2 cameraRenderer = new CameraRenderer2();
 
     public CustomRenderPipeline(bool useDynamicBatching, bool useGPUInstancing, bool useSRPBatcher, int shadowMapSize)
     {
@@ -21,7 +22,7 @@ public class CustomRenderPipeline : RenderPipeline
     {
         foreach (Camera camera in cameras)
         {
-            this.cameraRenderer.Render(context, camera, useDynamicBatching, useGPUInstancing, shadowMapSize);
+            this.cameraRenderer.Render(ref context, camera, useDynamicBatching, useGPUInstancing, shadowMapSize);
         }
     }
 }

@@ -102,7 +102,6 @@ public partial class CameraRenderer
         drawingSettings.sortingSettings = sortingSettings;
         filteringSettings.renderQueueRange = RenderQueueRange.transparent;
         context.DrawRenderers(cullingResults, ref drawingSettings, ref filteringSettings);
-
     }
 
     CullingResults? Cull(ScriptableRenderContext context, Camera camera)

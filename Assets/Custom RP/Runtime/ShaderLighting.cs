@@ -48,6 +48,9 @@ public static class ShaderLighting
         values.colors = new Vector4[cullingResults.visibleLights.Length];
         values.attenuations = new Vector4[cullingResults.visibleLights.Length];
         values.spotDirections = new Vector4[cullingResults.visibleLights.Length];
+        values.viewMatrices = new Matrix4x4[cullingResults.visibleLights.Length];
+        values.projectionMatrices = new Matrix4x4[cullingResults.visibleLights.Length];
+        values.worldToShadowMatrices = new Matrix4x4[cullingResults.visibleLights.Length];
 
         for (int i = 0; i < cullingResults.visibleLights.Length; i++)
         {
@@ -70,8 +73,28 @@ public static class ShaderLighting
             Bounds shadowBounds;
             if (visibleLight.light.shadows != LightShadows.None && cullingResults.GetShadowCasterBounds(i, out shadowBounds))
             {
-                values.shadowData[i].x = visibleLight.light.shadowStrength;
-                values.shadowData[i].y = visibleLight.light.shadows == LightShadows.Soft ? 1f : 0f;
+                Matrix4x4 viewMatrix;
+                Matrix4x4 projectionMatrix;
+                ShadowSplitData splitData;
+                if (cullingResults.ComputeSpotShadowMatricesAndCullingPrimitives(i, out viewMatrix, out projectionMatrix, out splitData))
+                {
+                    values.shadowData[i].x = visibleLight.light.shadowStrength;
+                    values.shadowData[i].y = visibleLight.light.shadows == LightShadows.Soft ? 1f : 0f;
+                    values.viewMatrices[i] = viewMatrix;
+                    values.projectionMatrices[i] = projectionMatrix;
+
+                    if (SystemInfo.usesReversedZBuffer)
+                    {
+                        projectionMatrix.m20 = -projectionMatrix.m20;
+                        projectionMatrix.m21 = -projectionMatrix.m21;
+                        projectionMatrix.m22 = -projectionMatrix.m22;
+                        projectionMatrix.m23 = -projectionMatrix.m23;
+                    }
+                    Matrix4x4 scaleOffset = Matrix4x4.identity;
+                    scaleOffset.m00 = scaleOffset.m11 = scaleOffset.m22 = 0.5f;
+                    scaleOffset.m03 = scaleOffset.m13 = scaleOffset.m23 = 0.5f;
+                    values.worldToShadowMatrices[i] = scaleOffset * (projectionMatrix * viewMatrix);
+                }
             }
         }
 
@@ -85,6 +108,9 @@ public static class ShaderLighting
         public Vector4[] colors;
         public Vector4[] attenuations;
         public Vector4[] spotDirections;
+        public Matrix4x4[] viewMatrices;
+        public Matrix4x4[] projectionMatrices;
+        public Matrix4x4[] worldToShadowMatrices;
     }
 
     public class LightingBuffers : IDisposable
@@ -94,8 +120,10 @@ public static class ShaderLighting
         public ComputeBuffer colorsBuffer;
         public ComputeBuffer attenuationsBuffer;
         public ComputeBuffer spotDirectionsBuffer;
+        public ComputeBuffer worldToShadowMatricesBuffer;
+        public ComputeBuffer lightIndicesBuffer;
 
-        public LightingBuffers(LightingValues lightingValues)
+        public LightingBuffers(ref CullingResults cullingResults, LightingValues lightingValues)
         {
             shadowDataBuffer = new ComputeBuffer(lightingValues.shadowData.Length, 4 * 4);
             shadowDataBuffer.SetData(lightingValues.shadowData);
@@ -107,6 +135,10 @@ public static class ShaderLighting
             attenuationsBuffer.SetData(lightingValues.attenuations);
             spotDirectionsBuffer = new ComputeBuffer(lightingValues.spotDirections.Length, 4 * 4);
             spotDirectionsBuffer.SetData(lightingValues.spotDirections);
+            worldToShadowMatricesBuffer = new ComputeBuffer(lightingValues.worldToShadowMatrices.Length, 4 * 4 * 4);
+            worldToShadowMatricesBuffer.SetData(lightingValues.worldToShadowMatrices);
+            lightIndicesBuffer = new ComputeBuffer(cullingResults.lightAndReflectionProbeIndexCount, 4);
+            cullingResults.FillLightAndReflectionProbeIndices(lightIndicesBuffer);
         }
 
         public void Dispose()
@@ -116,6 +148,8 @@ public static class ShaderLighting
             colorsBuffer.Release();
             attenuationsBuffer.Release();
             spotDirectionsBuffer.Release();
+            worldToShadowMatricesBuffer.Release();
+            lightIndicesBuffer.Release();
         }
     }
 }
