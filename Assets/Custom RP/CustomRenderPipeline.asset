@@ -15,4 +15,6 @@ MonoBehaviour:
   useDynamicBatching: 0
   useGPUInstancing: 1
   useSRPBatcher: 1
-  shadowMapSize: 512
+  shadowDistance: 100
+  shadowCascades: 4
+  shadowMapSize: 1024

@@ -2,7 +2,7 @@
 #define CUSTOM_LIGHTING_INCLUDED
 
 float HardShadowAttenuation (Light light, float3 shadowPosition) {
-    return SAMPLE_TEXTURE2D_ARRAY_SHADOW(_ShadowMaps, sampler_ShadowMaps, shadowPosition.xyz, light.index);
+    return SAMPLE_TEXTURE2D_ARRAY_SHADOW(_ShadowMaps, sampler_ShadowMaps, shadowPosition, light.index);
 }
 
 float SoftShadowAttenuation (Light light, float3 shadowPosition) {
@@ -31,14 +31,14 @@ float GetShadowAttenuation (Light light, float3 worldPosition) {
 
     #if defined(_SHADOWS_HARD) && defined(_SHADOWS_SOFT)
         if (light.shadowData.y == 0) {
-            attenuation = HardShadowAttenuation(light, shadowPosition);
+            attenuation = HardShadowAttenuation(light, shadowPosition.xyz);
         } else {
-            attenuation = SoftShadowAttenuation(light, shadowPosition);
+            attenuation = SoftShadowAttenuation(light, shadowPosition.xyz);
         }
     #elif defined(_SHADOWS_SOFT)
-        attenuation = SoftShadowAttenuation(light, shadowPosition);
+        attenuation = SoftShadowAttenuation(light, shadowPosition.xyz);
     #else
-        attenuation = HardShadowAttenuation(light, shadowPosition);
+        attenuation = HardShadowAttenuation(light, shadowPosition.xyz);
     #endif
 
     return lerp(1, attenuation, light.shadowData.x);
