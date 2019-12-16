@@ -7,8 +7,6 @@ public class CameraRenderer : IDisposable
 {
     const string lightBufferName = "Lighting";
     const string shadowBufferName = "Render Shadows";
-    const string shadowsSoftKeyword = "_SHADOWS_SOFT";
-    const string shadowsHardKeyword = "_SHADOWS_HARD";
 
     static ShaderTagId unlitShaderTagId = new ShaderTagId("SRPDefaultUnlit");
     static ShaderTagId litShaderTagId = new ShaderTagId("CustomLit");
