@@ -79,7 +79,6 @@ public class CameraRenderer : IDisposable
                 shadowMaps.volumeDepth = cullingResults.visibleLights.Length;
                 shadowMaps.filterMode = FilterMode.Bilinear;
                 shadowMaps.wrapMode = TextureWrapMode.Clamp;
-                SubmitBuffer(ref context, shadowBuffer);
 
                 bool hasSoftShadows = false;
                 bool hasHardShadows = false;
@@ -116,10 +115,11 @@ public class CameraRenderer : IDisposable
 
                     lightShadowBuffer.EndSample(lightShadowBuffer.name);
                     SubmitBuffer(ref context, lightShadowBuffer);
+                    lightShadowBuffer.Release();
                 }
 
-                CoreUtils.SetKeyword(shadowBuffer, shadowsSoftKeyword, hasSoftShadows);
-                CoreUtils.SetKeyword(shadowBuffer, shadowsHardKeyword, hasHardShadows);
+                ShaderInput.SetSoftShadows(shadowBuffer, hasSoftShadows);
+                ShaderInput.SetHardShadows(shadowBuffer, hasHardShadows);
                 ShaderInput.SetShadowMaps(shadowBuffer, shadowMaps);
                 ShaderInput.SetShadowMapsSize(shadowBuffer, new Vector4(1f / shadowMaps.width, 1f / shadowMaps.width, shadowMaps.width, shadowMaps.width));
                 shadowBuffer.EndSample(shadowBuffer.name);

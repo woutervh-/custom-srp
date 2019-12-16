@@ -3,6 +3,8 @@ using UnityEngine.Rendering;
 
 public static partial class ShaderInput
 {
+    const string shadowsSoftKeyword = "_SHADOWS_SOFT";
+    const string shadowsHardKeyword = "_SHADOWS_HARD";
     static int lightsCountId = Shader.PropertyToID("_LightsCount");
     static int lightsIndicesId = Shader.PropertyToID("_LightsIndices");
     static int lightsPositionsId = Shader.PropertyToID("_LightsPositions");
@@ -14,6 +16,16 @@ public static partial class ShaderInput
     static int shadowBiasId = Shader.PropertyToID("_ShadowBias");
     static int shadowMapSizeId = Shader.PropertyToID("_ShadowMapSize");
     static int worldToShadowMatricesId = Shader.PropertyToID("_WorldToShadowMatrices");
+
+    public static void SetSoftShadows(CommandBuffer buffer, bool flag)
+    {
+        CoreUtils.SetKeyword(buffer, shadowsSoftKeyword, flag);
+    }
+
+    public static void SetHardShadows(CommandBuffer buffer, bool flag)
+    {
+        CoreUtils.SetKeyword(buffer, shadowsHardKeyword, flag);
+    }
 
     public static void SetLightsCount(CommandBuffer buffer, int count)
     {
