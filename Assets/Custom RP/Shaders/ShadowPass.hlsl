@@ -34,7 +34,7 @@ Varyings ShadowPassVertex (Attributes input) {
 }
 
 float4 ShadowPassFragment (Varyings input) : SV_TARGET {
-    return float4(0, 0, 0, 0);
+    return float4(input.positionCS.z, input.positionCS.z, input.positionCS.z, 1);
 }
 
 #endif

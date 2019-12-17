@@ -97,11 +97,11 @@ public class CameraRenderer : IDisposable
 
                 if (lightingValues.shadowData[i].y <= 0f)
                 {
-                    hasSoftShadows = true;
+                    hasHardShadows = true;
                 }
                 else
                 {
-                    hasHardShadows = true;
+                    hasSoftShadows = true;
                 }
 
                 lightShadowBuffer.BeginSample(lightShadowBuffer.name);
