@@ -27,8 +27,8 @@ float GetShadowAttenuation (Light light, float3 worldPosition) {
 
     float4 shadowPosition = mul(light.worldToShadowMatrix, float4(worldPosition, 1.0));
     shadowPosition.xyz /= shadowPosition.w;
-    float attenuation;
 
+    float attenuation;
     #if defined(_SHADOWS_HARD) && defined(_SHADOWS_SOFT)
         if (light.shadowData.y == 0) {
             attenuation = HardShadowAttenuation(light, shadowPosition.xyz);

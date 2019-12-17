@@ -105,6 +105,7 @@ public class CameraRenderer : IDisposable
                 }
 
                 lightShadowBuffer.BeginSample(lightShadowBuffer.name);
+                lightShadowBuffer.EnableScissorRect(new Rect(4f, 4f, shadowMapSize - 4f, shadowMapSize - 4f));
                 lightShadowBuffer.SetViewProjectionMatrices(lightingValues.viewMatrices[i], lightingValues.projectionMatrices[i]);
                 ShaderInput.SetShadowBias(lightShadowBuffer, cullingResults.visibleLights[i].light.shadowBias);
                 SubmitBuffer(ref context, lightShadowBuffer);
