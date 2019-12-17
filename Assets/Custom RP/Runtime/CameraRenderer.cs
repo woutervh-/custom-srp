@@ -53,7 +53,7 @@ public class CameraRenderer : IDisposable
         RenderTexture shadowMaps = null;
         ShaderLighting.LightingBuffers lightingBuffers = null;
         ShaderInput.SetLightsCount(lightingBuffer, cullingResults.lightAndReflectionProbeIndexCount);
-        if (cullingResults.visibleLights.Length >= 1)
+        if (cullingResults.visibleLights.Length >= 1 && cullingResults.lightAndReflectionProbeIndexCount >= 1)
         {
             lightingBuffer.BeginSample(lightingBuffer.name);
             ShaderLighting.LightingValues lightingValues = ShaderLighting.CreateLightingValues(ref cullingResults, shadowMapSize);
