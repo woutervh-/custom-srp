@@ -40,7 +40,7 @@ public static class ShaderLighting
         values.attenuations[index].w = -outerCos / angleRange;
     }
 
-    public static LightingValues CreateLightingValues(ref CullingResults cullingResults, int shadowMapSize)
+    public static LightingValues CreateLightingValues(ref CullingResults cullingResults, int shadowMapSize, float shadowDistance)
     {
         LightingValues values = new LightingValues();
         values.shadowData = new Vector4[cullingResults.visibleLights.Length];
@@ -99,6 +99,7 @@ public static class ShaderLighting
                 {
                     values.shadowData[i].x = visibleLight.light.shadowStrength;
                     values.shadowData[i].y = visibleLight.light.shadows == LightShadows.Soft ? 1f : 0f;
+                    values.shadowData[i].z = shadowDistance * shadowDistance;
                     values.viewMatrices[i] = viewMatrix;
                     values.projectionMatrices[i] = projectionMatrix;
                     values.splitData[i] = splitData;

@@ -56,7 +56,7 @@ public class CameraRenderer : IDisposable
         if (cullingResults.visibleLights.Length >= 1 && cullingResults.lightAndReflectionProbeIndexCount >= 1)
         {
             lightingBuffer.BeginSample(lightingBuffer.name);
-            ShaderLighting.LightingValues lightingValues = ShaderLighting.CreateLightingValues(ref cullingResults, shadowMapSize);
+            ShaderLighting.LightingValues lightingValues = ShaderLighting.CreateLightingValues(ref cullingResults, shadowMapSize, shadowDistance);
             lightingBuffer.EndSample(lightingBuffer.name);
 
             lightingBuffers = new ShaderLighting.LightingBuffers(ref cullingResults, lightingValues);
@@ -105,7 +105,8 @@ public class CameraRenderer : IDisposable
                 }
 
                 lightShadowBuffer.BeginSample(lightShadowBuffer.name);
-                lightShadowBuffer.EnableScissorRect(new Rect(4f, 4f, shadowMapSize - 4f, shadowMapSize - 4f));
+                lightShadowBuffer.SetViewport(new Rect(0f, 0f, shadowMapSize, shadowMapSize));
+                lightShadowBuffer.EnableScissorRect(new Rect(4f, 4f, shadowMapSize - 8f, shadowMapSize - 8f));
                 lightShadowBuffer.SetViewProjectionMatrices(lightingValues.viewMatrices[i], lightingValues.projectionMatrices[i]);
                 ShaderInput.SetShadowBias(lightShadowBuffer, cullingResults.visibleLights[i].light.shadowBias);
                 SubmitBuffer(ref context, lightShadowBuffer);
@@ -124,6 +125,7 @@ public class CameraRenderer : IDisposable
             ShaderInput.SetShadowMaps(shadowBuffer, shadowMaps);
             ShaderInput.SetShadowMapsSize(shadowBuffer, new Vector4(1f / shadowMaps.width, 1f / shadowMaps.width, shadowMaps.width, shadowMaps.width));
             shadowBuffer.EndSample(shadowBuffer.name);
+            shadowBuffer.DisableScissorRect();
             SubmitBuffer(ref context, shadowBuffer);
         }
 
