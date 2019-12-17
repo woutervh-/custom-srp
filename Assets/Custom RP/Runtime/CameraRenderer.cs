@@ -71,62 +71,59 @@ public class CameraRenderer : IDisposable
             lightingBuffer.EndSample(lightingBuffer.name);
             SubmitBuffer(ref context, lightingBuffer);
 
-            if (cullingResults.visibleLights.Length > 0)
+            shadowBuffer.BeginSample(shadowBuffer.name);
+            SubmitBuffer(ref context, shadowBuffer);
+            shadowMaps = RenderTexture.GetTemporary(shadowMapSize, shadowMapSize, 16, RenderTextureFormat.Shadowmap);
+            shadowMaps.dimension = TextureDimension.Tex2DArray;
+            shadowMaps.volumeDepth = cullingResults.visibleLights.Length;
+            shadowMaps.filterMode = FilterMode.Bilinear;
+            shadowMaps.wrapMode = TextureWrapMode.Clamp;
+
+            bool hasSoftShadows = false;
+            bool hasHardShadows = false;
+            for (int i = 0; i < cullingResults.visibleLights.Length; i++)
             {
-                shadowBuffer.BeginSample(shadowBuffer.name);
-                SubmitBuffer(ref context, shadowBuffer);
-                shadowMaps = RenderTexture.GetTemporary(shadowMapSize, shadowMapSize, 16, RenderTextureFormat.Shadowmap);
-                shadowMaps.dimension = TextureDimension.Tex2DArray;
-                shadowMaps.volumeDepth = cullingResults.visibleLights.Length;
-                shadowMaps.filterMode = FilterMode.Bilinear;
-                shadowMaps.wrapMode = TextureWrapMode.Clamp;
-
-                bool hasSoftShadows = false;
-                bool hasHardShadows = false;
-                for (int i = 0; i < cullingResults.visibleLights.Length; i++)
+                CommandBuffer lightShadowBuffer = new CommandBuffer
                 {
-                    CommandBuffer lightShadowBuffer = new CommandBuffer
-                    {
-                        name = cullingResults.visibleLights[i].light.name
-                    };
+                    name = cullingResults.visibleLights[i].light.name
+                };
 
-                    CoreUtils.SetRenderTarget(lightShadowBuffer, shadowMaps, ClearFlag.Depth, 0, CubemapFace.Unknown, i);
+                CoreUtils.SetRenderTarget(lightShadowBuffer, shadowMaps, ClearFlag.Depth, 0, CubemapFace.Unknown, i);
 
-                    if (lightingValues.shadowData[i].x <= 0f)
-                    {
-                        continue;
-                    }
-
-                    if (lightingValues.shadowData[i].y <= 0f)
-                    {
-                        hasSoftShadows = true;
-                    }
-                    else
-                    {
-                        hasHardShadows = true;
-                    }
-
-                    lightShadowBuffer.BeginSample(lightShadowBuffer.name);
-                    lightShadowBuffer.SetViewProjectionMatrices(lightingValues.viewMatrices[i], lightingValues.projectionMatrices[i]);
-                    ShaderInput.SetShadowBias(lightShadowBuffer, cullingResults.visibleLights[i].light.shadowBias);
-                    SubmitBuffer(ref context, lightShadowBuffer);
-
-                    ShadowDrawingSettings shadowSettings = new ShadowDrawingSettings(cullingResults, i);
-                    shadowSettings.splitData = lightingValues.splitData[i];
-                    context.DrawShadows(ref shadowSettings);
-
-                    lightShadowBuffer.EndSample(lightShadowBuffer.name);
-                    SubmitBuffer(ref context, lightShadowBuffer);
-                    lightShadowBuffer.Release();
+                if (lightingValues.shadowData[i].x <= 0f)
+                {
+                    continue;
                 }
 
-                ShaderInput.SetSoftShadows(shadowBuffer, hasSoftShadows);
-                ShaderInput.SetHardShadows(shadowBuffer, hasHardShadows);
-                ShaderInput.SetShadowMaps(shadowBuffer, shadowMaps);
-                ShaderInput.SetShadowMapsSize(shadowBuffer, new Vector4(1f / shadowMaps.width, 1f / shadowMaps.width, shadowMaps.width, shadowMaps.width));
-                shadowBuffer.EndSample(shadowBuffer.name);
-                SubmitBuffer(ref context, shadowBuffer);
+                if (lightingValues.shadowData[i].y <= 0f)
+                {
+                    hasSoftShadows = true;
+                }
+                else
+                {
+                    hasHardShadows = true;
+                }
+
+                lightShadowBuffer.BeginSample(lightShadowBuffer.name);
+                lightShadowBuffer.SetViewProjectionMatrices(lightingValues.viewMatrices[i], lightingValues.projectionMatrices[i]);
+                ShaderInput.SetShadowBias(lightShadowBuffer, cullingResults.visibleLights[i].light.shadowBias);
+                SubmitBuffer(ref context, lightShadowBuffer);
+
+                ShadowDrawingSettings shadowSettings = new ShadowDrawingSettings(cullingResults, i);
+                shadowSettings.splitData = lightingValues.splitData[i];
+                context.DrawShadows(ref shadowSettings);
+
+                lightShadowBuffer.EndSample(lightShadowBuffer.name);
+                SubmitBuffer(ref context, lightShadowBuffer);
+                lightShadowBuffer.Release();
             }
+
+            ShaderInput.SetSoftShadows(shadowBuffer, hasSoftShadows);
+            ShaderInput.SetHardShadows(shadowBuffer, hasHardShadows);
+            ShaderInput.SetShadowMaps(shadowBuffer, shadowMaps);
+            ShaderInput.SetShadowMapsSize(shadowBuffer, new Vector4(1f / shadowMaps.width, 1f / shadowMaps.width, shadowMaps.width, shadowMaps.width));
+            shadowBuffer.EndSample(shadowBuffer.name);
+            SubmitBuffer(ref context, shadowBuffer);
         }
 
         CommandBuffer cameraBuffer = new CommandBuffer
