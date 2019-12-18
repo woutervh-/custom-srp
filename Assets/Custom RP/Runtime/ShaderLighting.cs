@@ -40,19 +40,79 @@ public static class ShaderLighting
         values.attenuations[index].w = -outerCos / angleRange;
     }
 
+    static Cascade[] SetupDirectionalCascades(LightingValues values, int index, ref VisibleLight visibleLight, ref CullingResults cullingResults, int shadowMapSize)
+    {
+        Matrix4x4 viewMatrix;
+        Matrix4x4 projectionMatrix;
+        ShadowSplitData splitData;
+
+        if (cullingResults.ComputeDirectionalShadowMatricesAndCullingPrimitives(index, 0, 1, Vector3.right, shadowMapSize, cullingResults.visibleLights[index].light.shadowNearPlane, out viewMatrix, out projectionMatrix, out splitData))
+        {
+            Cascade cascade = new Cascade();
+            cascade.viewMatrices = new Matrix4x4[1];
+            cascade.projectionMatrices = new Matrix4x4[1];
+            cascade.worldToShadowMatrices = new Matrix4x4[1];
+            cascade.splitData = new ShadowSplitData[1];
+            cascade.viewMatrices[0] = viewMatrix;
+            cascade.projectionMatrices[0] = projectionMatrix;
+            cascade.worldToShadowMatrices[0] = CreateWorldToShadowMatrix(ref viewMatrix, ref projectionMatrix);
+            cascade.splitData[0] = splitData;
+            return new Cascade[] { cascade };
+        }
+
+        return null;
+    }
+
+    static Cascade[] SetupSpotCascades(LightingValues values, int index, ref VisibleLight visibleLight, ref CullingResults cullingResults)
+    {
+        Matrix4x4 viewMatrix;
+        Matrix4x4 projectionMatrix;
+        ShadowSplitData splitData;
+
+        if (cullingResults.ComputeSpotShadowMatricesAndCullingPrimitives(index, out viewMatrix, out projectionMatrix, out splitData))
+        {
+            Cascade cascade = new Cascade();
+            cascade.viewMatrices = new Matrix4x4[1];
+            cascade.projectionMatrices = new Matrix4x4[1];
+            cascade.worldToShadowMatrices = new Matrix4x4[1];
+            cascade.splitData = new ShadowSplitData[1];
+            cascade.viewMatrices[0] = viewMatrix;
+            cascade.projectionMatrices[0] = projectionMatrix;
+            cascade.worldToShadowMatrices[0] = CreateWorldToShadowMatrix(ref viewMatrix, ref projectionMatrix);
+            cascade.splitData[0] = splitData;
+            return new Cascade[] { cascade };
+        }
+
+        return null;
+    }
+
+    static Matrix4x4 CreateWorldToShadowMatrix(ref Matrix4x4 viewMatrix, ref Matrix4x4 projectionMatrix)
+    {
+        if (SystemInfo.usesReversedZBuffer)
+        {
+            projectionMatrix.m20 = -projectionMatrix.m20;
+            projectionMatrix.m21 = -projectionMatrix.m21;
+            projectionMatrix.m22 = -projectionMatrix.m22;
+            projectionMatrix.m23 = -projectionMatrix.m23;
+        }
+        Matrix4x4 scaleOffset = Matrix4x4.identity;
+        scaleOffset.m00 = scaleOffset.m11 = scaleOffset.m22 = 0.5f;
+        scaleOffset.m03 = scaleOffset.m13 = scaleOffset.m23 = 0.5f;
+        return scaleOffset * (projectionMatrix * viewMatrix);
+    }
+
     public static LightingValues CreateLightingValues(ref CullingResults cullingResults, int shadowMapSize, float shadowDistance)
     {
         LightingValues values = new LightingValues();
         values.shadowData = new Vector4[cullingResults.visibleLights.Length];
+        values.cascadeData = new Vector2Int[cullingResults.visibleLights.Length];
         values.positions = new Vector4[cullingResults.visibleLights.Length];
         values.colors = new Vector4[cullingResults.visibleLights.Length];
         values.attenuations = new Vector4[cullingResults.visibleLights.Length];
         values.spotDirections = new Vector4[cullingResults.visibleLights.Length];
-        values.viewMatrices = new Matrix4x4[cullingResults.visibleLights.Length];
-        values.projectionMatrices = new Matrix4x4[cullingResults.visibleLights.Length];
-        values.worldToShadowMatrices = new Matrix4x4[cullingResults.visibleLights.Length];
-        values.splitData = new ShadowSplitData[cullingResults.visibleLights.Length];
+        values.cascades = new Cascade[cullingResults.visibleLights.Length];
 
+        int cascadeCount = 0;
         for (int i = 0; i < cullingResults.visibleLights.Length; i++)
         {
             VisibleLight visibleLight = cullingResults.visibleLights[i];
@@ -71,49 +131,29 @@ public static class ShaderLighting
             }
 
             values.shadowData[i] = Vector4.zero;
+            values.cascadeData[i] = Vector2Int.zero;
             Bounds shadowBounds;
             if (visibleLight.light.shadows != LightShadows.None && cullingResults.GetShadowCasterBounds(i, out shadowBounds))
             {
-                Matrix4x4 viewMatrix;
-                Matrix4x4 projectionMatrix;
-                ShadowSplitData splitData;
-                bool validShadows;
-
+                Cascade[] cascades = null;
                 switch (cullingResults.visibleLights[i].lightType)
                 {
                     case LightType.Directional:
-                        validShadows = cullingResults.ComputeDirectionalShadowMatricesAndCullingPrimitives(i, 0, 1, Vector3.right, shadowMapSize, cullingResults.visibleLights[i].light.shadowNearPlane, out viewMatrix, out projectionMatrix, out splitData);
+                        cascades = SetupDirectionalCascades(values, i, ref visibleLight, ref cullingResults, shadowMapSize);
                         break;
                     case LightType.Spot:
-                        validShadows = cullingResults.ComputeSpotShadowMatricesAndCullingPrimitives(i, out viewMatrix, out projectionMatrix, out splitData);
-                        break;
-                    default:
-                        viewMatrix = Matrix4x4.identity;
-                        projectionMatrix = Matrix4x4.identity;
-                        splitData = new ShadowSplitData();
-                        validShadows = false;
+                        cascades = SetupSpotCascades(values, i, ref visibleLight, ref cullingResults);
                         break;
                 }
 
-                if (validShadows)
+                if (cascades != null)
                 {
                     values.shadowData[i].x = visibleLight.light.shadowStrength;
                     values.shadowData[i].y = visibleLight.light.shadows == LightShadows.Soft ? 1f : 0f;
-                    values.viewMatrices[i] = viewMatrix;
-                    values.projectionMatrices[i] = projectionMatrix;
-                    values.splitData[i] = splitData;
-
-                    if (SystemInfo.usesReversedZBuffer)
-                    {
-                        projectionMatrix.m20 = -projectionMatrix.m20;
-                        projectionMatrix.m21 = -projectionMatrix.m21;
-                        projectionMatrix.m22 = -projectionMatrix.m22;
-                        projectionMatrix.m23 = -projectionMatrix.m23;
-                    }
-                    Matrix4x4 scaleOffset = Matrix4x4.identity;
-                    scaleOffset.m00 = scaleOffset.m11 = scaleOffset.m22 = 0.5f;
-                    scaleOffset.m03 = scaleOffset.m13 = scaleOffset.m23 = 0.5f;
-                    values.worldToShadowMatrices[i] = scaleOffset * (projectionMatrix * viewMatrix);
+                    values.cascadeData[i].x = cascades.Length;
+                    values.cascadeData[i].y = cascadeCount;
+                    values.cascades = cascades;
+                    cascadeCount += cascades.Length;
                 }
             }
         }
@@ -121,17 +161,18 @@ public static class ShaderLighting
         return values;
     }
 
+    public class Cascade
+    {
+        public Matrix4x4[] viewMatrices;
+        public Matrix4x4[] projectionMatrices;
+        public Matrix4x4[] worldToShadowMatrices;
+        public ShadowSplitData[] splitData;
+    }
+
     public class LightingValues
     {
-        public class Cascade
-        {
-            public Matrix4x4[] viewMatrices;
-            public Matrix4x4[] projectionMatrices;
-            public Matrix4x4[] worldToShadowMatrices;
-            public ShadowSplitData[] splitData;
-        }
-
         public Vector4[] shadowData;
+        public Vector2Int[] cascadeData;
         public Vector4[] positions;
         public Vector4[] colors;
         public Vector4[] attenuations;
@@ -151,6 +192,22 @@ public static class ShaderLighting
 
         public LightingBuffers(ref CullingResults cullingResults, LightingValues lightingValues)
         {
+            int worldToShadowMatricesCount = 0;
+            for (int i = 0; i < lightingValues.cascades.Length; i++)
+            {
+                worldToShadowMatricesCount += lightingValues.cascades[i].worldToShadowMatrices.Length;
+            }
+            Matrix4x4[] worldToShadowMatrices = new Matrix4x4[worldToShadowMatricesCount];
+            int worldToShadowMatricesIndex = 0;
+            for (int i = 0; i < lightingValues.cascades.Length; i++)
+            {
+                for (int j = 0; j < lightingValues.cascades[i].worldToShadowMatrices.Length; j++)
+                {
+                    worldToShadowMatrices[worldToShadowMatricesIndex] = lightingValues.cascades[i].worldToShadowMatrices[j];
+                    worldToShadowMatricesIndex += 1;
+                }
+            }
+
             shadowDataBuffer = new ComputeBuffer(lightingValues.shadowData.Length, 4 * 4);
             shadowDataBuffer.SetData(lightingValues.shadowData);
             positionsBuffer = new ComputeBuffer(lightingValues.positions.Length, 4 * 4);
@@ -161,8 +218,8 @@ public static class ShaderLighting
             attenuationsBuffer.SetData(lightingValues.attenuations);
             spotDirectionsBuffer = new ComputeBuffer(lightingValues.spotDirections.Length, 4 * 4);
             spotDirectionsBuffer.SetData(lightingValues.spotDirections);
-            worldToShadowMatricesBuffer = new ComputeBuffer(lightingValues.worldToShadowMatrices.Length, 4 * 4 * 4);
-            worldToShadowMatricesBuffer.SetData(lightingValues.worldToShadowMatrices);
+            worldToShadowMatricesBuffer = new ComputeBuffer(worldToShadowMatricesCount, 4 * 4 * 4);
+            worldToShadowMatricesBuffer.SetData(worldToShadowMatrices);
             lightIndicesBuffer = new ComputeBuffer(cullingResults.lightAndReflectionProbeIndexCount, 4);
             cullingResults.FillLightAndReflectionProbeIndices(lightIndicesBuffer);
         }
