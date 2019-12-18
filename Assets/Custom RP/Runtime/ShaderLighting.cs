@@ -112,7 +112,7 @@ public static class ShaderLighting
         values.spotDirections = new Vector4[cullingResults.visibleLights.Length];
         values.cascades = new Cascade[cullingResults.visibleLights.Length];
 
-        int cascadeCount = 0;
+        int cascadeIndex = 0;
         for (int i = 0; i < cullingResults.visibleLights.Length; i++)
         {
             VisibleLight visibleLight = cullingResults.visibleLights[i];
@@ -151,9 +151,9 @@ public static class ShaderLighting
                     values.shadowData[i].x = visibleLight.light.shadowStrength;
                     values.shadowData[i].y = visibleLight.light.shadows == LightShadows.Soft ? 1f : 0f;
                     values.cascadeData[i].x = cascades.Length;
-                    values.cascadeData[i].y = cascadeCount;
+                    values.cascadeData[i].y = cascadeIndex;
                     values.cascades = cascades;
-                    cascadeCount += cascades.Length;
+                    cascadeIndex += cascades.Length;
                 }
             }
         }
@@ -195,16 +195,22 @@ public static class ShaderLighting
             int worldToShadowMatricesCount = 0;
             for (int i = 0; i < lightingValues.cascades.Length; i++)
             {
-                worldToShadowMatricesCount += lightingValues.cascades[i].worldToShadowMatrices.Length;
+                if (lightingValues.cascades[i] != null)
+                {
+                    worldToShadowMatricesCount += lightingValues.cascades[i].worldToShadowMatrices.Length;
+                }
             }
             Matrix4x4[] worldToShadowMatrices = new Matrix4x4[worldToShadowMatricesCount];
             int worldToShadowMatricesIndex = 0;
             for (int i = 0; i < lightingValues.cascades.Length; i++)
             {
-                for (int j = 0; j < lightingValues.cascades[i].worldToShadowMatrices.Length; j++)
+                if (lightingValues.cascades[i] != null)
                 {
-                    worldToShadowMatrices[worldToShadowMatricesIndex] = lightingValues.cascades[i].worldToShadowMatrices[j];
-                    worldToShadowMatricesIndex += 1;
+                    for (int j = 0; j < lightingValues.cascades[i].worldToShadowMatrices.Length; j++)
+                    {
+                        worldToShadowMatrices[worldToShadowMatricesIndex] = lightingValues.cascades[i].worldToShadowMatrices[j];
+                        worldToShadowMatricesIndex += 1;
+                    }
                 }
             }
 
@@ -218,8 +224,11 @@ public static class ShaderLighting
             attenuationsBuffer.SetData(lightingValues.attenuations);
             spotDirectionsBuffer = new ComputeBuffer(lightingValues.spotDirections.Length, 4 * 4);
             spotDirectionsBuffer.SetData(lightingValues.spotDirections);
-            worldToShadowMatricesBuffer = new ComputeBuffer(worldToShadowMatricesCount, 4 * 4 * 4);
-            worldToShadowMatricesBuffer.SetData(worldToShadowMatrices);
+            if (worldToShadowMatricesCount >= 1)
+            {
+                worldToShadowMatricesBuffer = new ComputeBuffer(worldToShadowMatricesCount, 4 * 4 * 4);
+                worldToShadowMatricesBuffer.SetData(worldToShadowMatrices);
+            }
             lightIndicesBuffer = new ComputeBuffer(cullingResults.lightAndReflectionProbeIndexCount, 4);
             cullingResults.FillLightAndReflectionProbeIndices(lightIndicesBuffer);
         }
@@ -231,7 +240,10 @@ public static class ShaderLighting
             colorsBuffer.Release();
             attenuationsBuffer.Release();
             spotDirectionsBuffer.Release();
-            worldToShadowMatricesBuffer.Release();
+            if (worldToShadowMatricesBuffer != null)
+            {
+                worldToShadowMatricesBuffer.Release();
+            }
             lightIndicesBuffer.Release();
         }
     }

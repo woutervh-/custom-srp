@@ -88,8 +88,6 @@ public class CameraRenderer : IDisposable
                     name = cullingResults.visibleLights[i].light.name
                 };
 
-                CoreUtils.SetRenderTarget(lightShadowBuffer, shadowMaps, ClearFlag.Depth, 0, CubemapFace.Unknown, i);
-
                 if (lightingValues.shadowData[i].x <= 0f)
                 {
                     continue;
@@ -104,16 +102,23 @@ public class CameraRenderer : IDisposable
                     hasSoftShadows = true;
                 }
 
+                CoreUtils.SetRenderTarget(lightShadowBuffer, shadowMaps, ClearFlag.Depth, 0, CubemapFace.Unknown, i);
+
                 lightShadowBuffer.BeginSample(lightShadowBuffer.name);
-                lightShadowBuffer.SetViewport(new Rect(0f, 0f, shadowMapSize, shadowMapSize));
-                lightShadowBuffer.EnableScissorRect(new Rect(4f, 4f, shadowMapSize - 8f, shadowMapSize - 8f));
-                lightShadowBuffer.SetViewProjectionMatrices(lightingValues.viewMatrices[i], lightingValues.projectionMatrices[i]);
-                ShaderInput.SetShadowBias(lightShadowBuffer, cullingResults.visibleLights[i].light.shadowBias);
                 SubmitBuffer(ref context, lightShadowBuffer);
 
-                ShadowDrawingSettings shadowSettings = new ShadowDrawingSettings(cullingResults, i);
-                shadowSettings.splitData = lightingValues.splitData[i];
-                context.DrawShadows(ref shadowSettings);
+                for (int j = 0; j < lightingValues.cascadeData[i].x; j++)
+                {
+                    lightShadowBuffer.SetViewport(new Rect(0f, 0f, shadowMapSize, shadowMapSize));
+                    lightShadowBuffer.EnableScissorRect(new Rect(4f, 4f, shadowMapSize - 8f, shadowMapSize - 8f));
+                    lightShadowBuffer.SetViewProjectionMatrices(lightingValues.cascades[i].viewMatrices[j], lightingValues.cascades[i].projectionMatrices[j]);
+                    ShaderInput.SetShadowBias(lightShadowBuffer, cullingResults.visibleLights[i].light.shadowBias);
+                    SubmitBuffer(ref context, lightShadowBuffer);
+
+                    ShadowDrawingSettings shadowSettings = new ShadowDrawingSettings(cullingResults, i);
+                    shadowSettings.splitData = lightingValues.cascades[i].splitData[j];
+                    context.DrawShadows(ref shadowSettings);
+                }
 
                 lightShadowBuffer.EndSample(lightShadowBuffer.name);
                 SubmitBuffer(ref context, lightShadowBuffer);
