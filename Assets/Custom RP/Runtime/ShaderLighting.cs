@@ -99,7 +99,6 @@ public static class ShaderLighting
                 {
                     values.shadowData[i].x = visibleLight.light.shadowStrength;
                     values.shadowData[i].y = visibleLight.light.shadows == LightShadows.Soft ? 1f : 0f;
-                    values.shadowData[i].z = shadowDistance * shadowDistance;
                     values.viewMatrices[i] = viewMatrix;
                     values.projectionMatrices[i] = projectionMatrix;
                     values.splitData[i] = splitData;
@@ -124,15 +123,20 @@ public static class ShaderLighting
 
     public class LightingValues
     {
+        public class Cascade
+        {
+            public Matrix4x4[] viewMatrices;
+            public Matrix4x4[] projectionMatrices;
+            public Matrix4x4[] worldToShadowMatrices;
+            public ShadowSplitData[] splitData;
+        }
+
         public Vector4[] shadowData;
         public Vector4[] positions;
         public Vector4[] colors;
         public Vector4[] attenuations;
         public Vector4[] spotDirections;
-        public Matrix4x4[] viewMatrices;
-        public Matrix4x4[] projectionMatrices;
-        public Matrix4x4[] worldToShadowMatrices;
-        public ShadowSplitData[] splitData;
+        public Cascade[] cascades;
     }
 
     public class LightingBuffers : IDisposable
