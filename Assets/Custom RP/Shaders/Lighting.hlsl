@@ -81,7 +81,9 @@ float3 GetLighting (Surface surface, BRDF brdf, Light light) {
 }
 
 float3 GetLighting (Surface surface, BRDF brdf) {
-    // float4 shadowPosition = mul(GetLight(GetLightIndex(0)).worldToShadowMatrix, float4(surface.worldPosition, 1.0));
+    // Light light = GetLight(GetLightIndex(0));
+    // float4x4 worldToShadowMatrix = GetWorldToShadowMatrix(light, 0);
+    // float4 shadowPosition = mul(worldToShadowMatrix, float4(surface.worldPosition, 1.0));
     // shadowPosition.xyz /= shadowPosition.w;
 
     // return float3(shadowPosition.z, shadowPosition.z, shadowPosition.z);

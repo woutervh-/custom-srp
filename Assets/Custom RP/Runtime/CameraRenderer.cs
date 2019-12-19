@@ -19,12 +19,6 @@ public partial class CameraRenderer : IDisposable
     };
 #endif
 
-    void SubmitBuffer(ref ScriptableRenderContext context, CommandBuffer buffer)
-    {
-        context.ExecuteCommandBuffer(buffer);
-        buffer.Clear();
-    }
-
     public void Render(ref ScriptableRenderContext context, Camera camera, bool useDynamicBatching, bool useGPUInstancing, int shadowMapSize, float shadowDistance, int shadowCascades, Vector3 shadowCascadesSplit)
     {
 #if UNITY_EDITOR
@@ -43,45 +37,83 @@ public partial class CameraRenderer : IDisposable
 
         CullingResults cullingResults = context.Cull(ref cullingParameters);
 
+        RenderShadows(ref context, ref cullingResults, shadowMapSize);
+        SetupShadowInput(ref context);
         SetupLights(ref context, ref cullingResults, shadowMapSize, shadowDistance);
+        SetLightingInput(ref context, ref cullingResults);
 
-        CommandBuffer buffer = new CommandBuffer
+        CommandBuffer cameraBuffer = new CommandBuffer
         {
             name = camera.name
         };
 
         context.SetupCameraProperties(camera);
         CameraClearFlags flags = camera.clearFlags;
-        buffer.ClearRenderTarget(
+        cameraBuffer.ClearRenderTarget(
             flags <= CameraClearFlags.Depth,
             flags == CameraClearFlags.Color,
             flags == CameraClearFlags.Color ? camera.backgroundColor.linear : Color.clear
         );
-        buffer.BeginSample(buffer.name);
-        SubmitBuffer(ref context, buffer);
+        SubmitBuffer(ref context, cameraBuffer);
         DrawVisibleGeometry(ref context, camera, ref cullingResults, useDynamicBatching, useGPUInstancing);
-        buffer.EndSample(buffer.name);
-        SubmitBuffer(ref context, buffer);
+        SubmitBuffer(ref context, cameraBuffer);
 
 #if UNITY_EDITOR
         DrawUnsupportedShaders(ref context, camera, ref cullingResults);
         DrawGizmos(ref context, camera);
 #endif
         context.Submit();
-        buffer.Release();
+        cameraBuffer.Release();
 
         Cleanup();
     }
 
     void Cleanup()
     {
-        if (lightingBuffers != null)
+        if (shadowDataBuffer != null)
         {
-            lightingBuffers.Dispose();
+            shadowDataBuffer.Release();
+            shadowDataBuffer = null;
+        }
+        if (shadowCascadesBuffer != null)
+        {
+            shadowCascadesBuffer.Release();
+            shadowCascadesBuffer = null;
+        }
+        if (worldToShadowMatricesBuffer != null)
+        {
+            worldToShadowMatricesBuffer.Release();
+            worldToShadowMatricesBuffer = null;
+        }
+        if (colorsBuffer != null)
+        {
+            colorsBuffer.Release();
+            colorsBuffer = null;
+        }
+        if (positionsBuffer != null)
+        {
+            positionsBuffer.Release();
+            positionsBuffer = null;
+        }
+        if (spotDirectionsBuffer != null)
+        {
+            spotDirectionsBuffer.Release();
+            spotDirectionsBuffer = null;
+        }
+        if (attenuationsBuffer != null)
+        {
+            attenuationsBuffer.Release();
+            attenuationsBuffer = null;
+        }
+        if (lightIndicesBuffer != null)
+        {
+            lightIndicesBuffer.Release();
+            lightIndicesBuffer = null;
         }
         if (shadowMaps != null)
         {
             shadowMaps.Release();
+            shadowMaps = null;
         }
     }
 
