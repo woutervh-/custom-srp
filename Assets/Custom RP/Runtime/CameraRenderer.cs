@@ -67,6 +67,7 @@ public class CameraRenderer : IDisposable
             ShaderInput.SetLightsSpotDirections(lightingBuffer, lightingBuffers.spotDirectionsBuffer);
             ShaderInput.SetLightIndices(lightingBuffer, lightingBuffers.lightIndicesBuffer);
             ShaderInput.SetShadowData(lightingBuffer, lightingBuffers.shadowDataBuffer);
+            ShaderInput.SetShadowCascades(lightingBuffer, lightingBuffers.cascadeDataBuffer);
             ShaderInput.SetWorldToShadowMatrices(lightingBuffer, lightingBuffers.worldToShadowMatricesBuffer);
             lightingBuffer.EndSample(lightingBuffer.name);
             SubmitBuffer(ref context, lightingBuffer);

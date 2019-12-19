@@ -183,6 +183,7 @@ public static class ShaderLighting
     public class LightingBuffers : IDisposable
     {
         public ComputeBuffer shadowDataBuffer;
+        public ComputeBuffer cascadeDataBuffer;
         public ComputeBuffer positionsBuffer;
         public ComputeBuffer colorsBuffer;
         public ComputeBuffer attenuationsBuffer;
@@ -216,6 +217,8 @@ public static class ShaderLighting
 
             shadowDataBuffer = new ComputeBuffer(lightingValues.shadowData.Length, 4 * 4);
             shadowDataBuffer.SetData(lightingValues.shadowData);
+            cascadeDataBuffer = new ComputeBuffer(lightingValues.cascadeData.Length, 2 * 4);
+            cascadeDataBuffer.SetData(lightingValues.cascadeData);
             positionsBuffer = new ComputeBuffer(lightingValues.positions.Length, 4 * 4);
             positionsBuffer.SetData(lightingValues.positions);
             colorsBuffer = new ComputeBuffer(lightingValues.colors.Length, 4 * 4);
@@ -236,6 +239,7 @@ public static class ShaderLighting
         public void Dispose()
         {
             shadowDataBuffer.Release();
+            cascadeDataBuffer.Release();
             positionsBuffer.Release();
             colorsBuffer.Release();
             attenuationsBuffer.Release();

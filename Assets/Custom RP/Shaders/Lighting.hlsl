@@ -25,7 +25,8 @@ float GetShadowAttenuation (Light light, float3 worldPosition) {
         return 1.0;
     }
 
-    float4 shadowPosition = mul(light.worldToShadowMatrix, float4(worldPosition, 1.0));
+    float4x4 worldToShadowMatrix = GetWorldToShadowMatrix(light, 0);
+    float4 shadowPosition = mul(worldToShadowMatrix, float4(worldPosition, 1.0));
     shadowPosition.xyz /= shadowPosition.w;
 
     #if UNITY_REVERSED_Z

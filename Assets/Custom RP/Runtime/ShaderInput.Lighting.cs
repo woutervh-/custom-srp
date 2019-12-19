@@ -13,6 +13,7 @@ public static partial class ShaderInput
     static int lightsSpotDirectionsId = Shader.PropertyToID("_LightsSpotDirections");
     static int shadowMapsId = Shader.PropertyToID("_ShadowMaps");
     static int shadowDataId = Shader.PropertyToID("_ShadowData");
+    static int shadowCascadesId = Shader.PropertyToID("_ShadowCascades");
     static int shadowBiasId = Shader.PropertyToID("_ShadowBias");
     static int shadowMapSizeId = Shader.PropertyToID("_ShadowMapSize");
     static int worldToShadowMatricesId = Shader.PropertyToID("_WorldToShadowMatrices");
@@ -80,5 +81,10 @@ public static partial class ShaderInput
     public static void SetLightIndices(CommandBuffer buffer, ComputeBuffer lightsIndices)
     {
         buffer.SetGlobalBuffer(lightsIndicesId, lightsIndices);
+    }
+
+    public static void SetShadowCascades(CommandBuffer buffer, ComputeBuffer shadowCascades)
+    {
+        buffer.SetGlobalBuffer(shadowCascadesId, shadowCascades);
     }
 }
