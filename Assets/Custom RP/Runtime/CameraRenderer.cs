@@ -37,7 +37,7 @@ public partial class CameraRenderer : IDisposable
 
         CullingResults cullingResults = context.Cull(ref cullingParameters);
 
-        RenderShadows(ref context, ref cullingResults, shadowMapSize);
+        RenderShadows(ref context, ref cullingResults, shadowMapSize, shadowCascades, shadowCascadesSplit);
         SetupShadowInput(ref context);
         SetupLights(ref context, ref cullingResults, shadowMapSize, shadowDistance);
         SetLightingInput(ref context, ref cullingResults);
@@ -79,6 +79,11 @@ public partial class CameraRenderer : IDisposable
         {
             shadowCascadesBuffer.Release();
             shadowCascadesBuffer = null;
+        }
+        if (shadowCascadeCullingSpheresBuffer != null)
+        {
+            shadowCascadeCullingSpheresBuffer.Release();
+            shadowCascadeCullingSpheresBuffer = null;
         }
         if (worldToShadowMatricesBuffer != null)
         {

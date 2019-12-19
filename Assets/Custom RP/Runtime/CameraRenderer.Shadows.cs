@@ -15,12 +15,14 @@ public partial class CameraRenderer
     bool hasSoftShadows;
     bool hasHardShadows;
     Vector4[] shadowData;
-    Vector2Int[] shadowCascadeData;
+    Vector3Int[] shadowCascadeData;
     List<Matrix4x4> worldToShadowMatrices;
     List<ShadowSplitData> splitDatas;
+    List<Vector4> cullingSpheres;
 
     ComputeBuffer shadowDataBuffer;
     ComputeBuffer shadowCascadesBuffer;
+    ComputeBuffer shadowCascadeCullingSpheresBuffer;
     ComputeBuffer worldToShadowMatricesBuffer;
 
     void SetupShadowInput(ref ScriptableRenderContext context)
@@ -38,13 +40,16 @@ public partial class CameraRenderer
         shadowCascadesBuffer = CreateBuffer(shadowCascadeData);
         ShaderInput.SetShadowCascades(shadowsBuffer, shadowCascadesBuffer);
 
+        shadowCascadeCullingSpheresBuffer = CreateBuffer(cullingSpheres.ToArray());
+        ShaderInput.SetShadowCascadeCullingSpheres(shadowsBuffer, shadowCascadeCullingSpheresBuffer);
+
         worldToShadowMatricesBuffer = CreateBuffer(worldToShadowMatrices.ToArray());
         ShaderInput.SetWorldToShadowMatrices(shadowsBuffer, worldToShadowMatricesBuffer);
 
         SubmitBuffer(ref context, shadowsBuffer);
     }
 
-    static Matrix4x4 CreateWorldToShadowMatrix(Matrix4x4 viewMatrix, Matrix4x4 projectionMatrix)
+    static Matrix4x4 CreateWorldToShadowMatrix(ref Matrix4x4 viewMatrix, ref Matrix4x4 projectionMatrix)
     {
         if (SystemInfo.usesReversedZBuffer)
         {
@@ -59,9 +64,7 @@ public partial class CameraRenderer
         return scaleOffset * (projectionMatrix * viewMatrix);
     }
 
-    const int CASCADE_COUNT = 1;
-
-    void RenderShadows(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize)
+    void RenderShadows(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize, int shadowCascades, Vector3 shadowCascadesSplit)
     {
         shadowMaps = RenderTexture.GetTemporary(shadowMapSize, shadowMapSize, 16, RenderTextureFormat.Shadowmap);
         shadowMaps.dimension = TextureDimension.Tex2DArray;
@@ -69,26 +72,32 @@ public partial class CameraRenderer
         shadowMaps.filterMode = FilterMode.Bilinear;
         shadowMaps.wrapMode = TextureWrapMode.Clamp;
 
-
         hasSoftShadows = false;
         hasHardShadows = false;
         shadowData = new Vector4[cullingResults.visibleLights.Length];
-        shadowCascadeData = new Vector2Int[cullingResults.visibleLights.Length];
+        shadowCascadeData = new Vector3Int[cullingResults.visibleLights.Length];
         worldToShadowMatrices = new List<Matrix4x4>();
         splitDatas = new List<ShadowSplitData>();
+        cullingSpheres = new List<Vector4>();
 
         for (int i = 0; i < cullingResults.visibleLights.Length; i++)
         {
             VisibleLight visibleLight = cullingResults.visibleLights[i];
             shadowData[i] = Vector4.zero;
-            shadowCascadeData[i] = Vector2Int.zero;
+            shadowCascadeData[i] = Vector3Int.zero;
 
             Bounds shadowBounds;
             if (visibleLight.light.shadows != LightShadows.None && cullingResults.GetShadowCasterBounds(i, out shadowBounds))
             {
                 CoreUtils.SetRenderTarget(shadowsBuffer, shadowMaps, ClearFlag.Depth, 0, CubemapFace.Unknown, i);
 
-                for (int j = 0; j < CASCADE_COUNT; j++)
+                int cascadeCount = visibleLight.lightType == LightType.Directional ? shadowCascades : 1;
+                Vector3 cascadeSplit = cascadeCount == 4 ? shadowCascadesSplit : Vector3.right;
+                int tileSize = cascadeCount == 4 ? shadowMapSize / 2 : shadowMapSize;
+                shadowCascadeData[i].x = cascadeCount;
+                shadowCascadeData[i].y = worldToShadowMatrices.Count;
+                shadowCascadeData[i].z = cullingSpheres.Count;
+                for (int j = 0; j < cascadeCount; j++)
                 {
                     Matrix4x4 viewMatrix;
                     Matrix4x4 projectionMatrix;
@@ -98,7 +107,7 @@ public partial class CameraRenderer
                     if (visibleLight.lightType == LightType.Directional)
                     {
 
-                        validShadows = cullingResults.ComputeDirectionalShadowMatricesAndCullingPrimitives(i, 0, 1, Vector3.right, shadowMapSize, visibleLight.light.shadowNearPlane, out viewMatrix, out projectionMatrix, out splitData);
+                        validShadows = cullingResults.ComputeDirectionalShadowMatricesAndCullingPrimitives(i, j, cascadeCount, cascadeSplit, tileSize, visibleLight.light.shadowNearPlane, out viewMatrix, out projectionMatrix, out splitData);
                     }
                     else
                     {
@@ -111,21 +120,46 @@ public partial class CameraRenderer
                         hasHardShadows = hasHardShadows || visibleLight.light.shadows == LightShadows.Hard;
                         shadowData[i].x = visibleLight.light.shadowStrength;
                         shadowData[i].y = visibleLight.light.shadows == LightShadows.Soft ? 1f : 0f;
-                        shadowCascadeData[i].x = CASCADE_COUNT;
-                        shadowCascadeData[i].y = worldToShadowMatrices.Count;
-                        worldToShadowMatrices.Add(CreateWorldToShadowMatrix(viewMatrix, projectionMatrix));
-                        splitDatas.Add(splitData);
 
-                        shadowsBuffer.SetViewport(new Rect(0f, 0f, shadowMapSize, shadowMapSize));
-                        shadowsBuffer.EnableScissorRect(new Rect(4f, 4f, shadowMapSize - 8f, shadowMapSize - 8f));
+                        Vector2Int tileOffset = new Vector2Int(j % 2, j / 2);
+                        Rect tileViewport = new Rect(tileOffset.x * tileSize, tileOffset.y * tileSize, tileSize, tileSize);
+
+                        shadowsBuffer.SetViewport(new Rect(tileViewport));
+                        shadowsBuffer.EnableScissorRect(new Rect(tileViewport.x + 4f, tileViewport.y + 4f, tileSize - 8f, tileSize - 8f));
                         shadowsBuffer.SetViewProjectionMatrices(viewMatrix, projectionMatrix);
                         ShaderInput.SetShadowBias(shadowsBuffer, visibleLight.light.shadowBias);
                         SubmitBuffer(ref context, shadowsBuffer);
 
+                        Matrix4x4 tileMatrix = Matrix4x4.identity;
+                        if (cascadeCount == 4)
+                        {
+                            tileMatrix.m00 = tileMatrix.m11 = 0.5f;
+                            tileMatrix.m03 = tileOffset.x * 0.5f;
+                            tileMatrix.m13 = tileOffset.y * 0.5f;
+                        }
+
                         ShadowDrawingSettings shadowSettings = new ShadowDrawingSettings(cullingResults, i);
                         shadowSettings.splitData = splitData;
                         context.DrawShadows(ref shadowSettings);
+
+                        worldToShadowMatrices.Add(tileMatrix * CreateWorldToShadowMatrix(ref viewMatrix, ref projectionMatrix));
+                        splitDatas.Add(splitData);
+                        if (cascadeCount == 4)
+                        {
+                            Vector4 cullingSphere = splitData.cullingSphere;
+                            cullingSphere.w *= cullingSphere.w;
+                            cullingSpheres.Add(cullingSphere);
+                        }
                     }
+                }
+                if (cascadeCount == 4)
+                {
+                    Matrix4x4 additionalMatrix = Matrix4x4.zero;
+                    if (SystemInfo.usesReversedZBuffer)
+                    {
+                        additionalMatrix.m33 = 1f;
+                    }
+                    worldToShadowMatrices.Add(additionalMatrix);
                 }
             }
         }

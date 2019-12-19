@@ -13,7 +13,8 @@ CBUFFER_END
 CBUFFER_START(_ShadowBuffer)
     StructuredBuffer<float4x4> _WorldToShadowMatrices;
     StructuredBuffer<float4> _ShadowData;
-    StructuredBuffer<int2> _ShadowCascades;
+    StructuredBuffer<float4> _ShadowCascadeCullingSpheres;
+    StructuredBuffer<int3> _ShadowCascades;
     float4 _ShadowMapSize;
 CBUFFER_END
 
@@ -27,7 +28,7 @@ struct Light {
     float4 attenuation;
     float4 spotDirection;
     float4 shadowData;
-    int2 cascadeData;
+    int3 cascadeData;
 };
 
 int GetLightIndex(uint i) {
@@ -47,7 +48,11 @@ float3 GetLightDirection (Surface surface, Light light) {
     return normalize(light.position.xyz - surface.worldPosition * light.position.w);
 }
 
-float4x4 GetWorldToShadowMatrix(Light light, int cascadeIndex) {
+float4 GetCullingSphere (Light light, int cascadeIndex) {
+    return _ShadowCascadeCullingSpheres[light.cascadeData.z + cascadeIndex];
+}
+
+float4x4 GetWorldToShadowMatrix (Light light, int cascadeIndex) {
     return _WorldToShadowMatrices[light.cascadeData.y + cascadeIndex];
 }
 

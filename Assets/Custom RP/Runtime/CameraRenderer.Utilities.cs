@@ -51,4 +51,18 @@ public partial class CameraRenderer
             return null;
         }
     }
+
+    static ComputeBuffer CreateBuffer(Vector3Int[] data)
+    {
+        if (data != null && data.Length >= 1)
+        {
+            ComputeBuffer buffer = new ComputeBuffer(data.Length, 3 * 4);
+            buffer.SetData(data);
+            return buffer;
+        }
+        else
+        {
+            return null;
+        }
+    }
 }
