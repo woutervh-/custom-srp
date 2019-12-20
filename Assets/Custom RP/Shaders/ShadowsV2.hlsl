@@ -1,6 +1,0 @@
-#ifndef SHADOWS_V2_INCLUDED
-#define SHADOWS_V2_INCLUDED
-
-
-
-#endif

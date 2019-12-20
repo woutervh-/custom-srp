@@ -52,7 +52,7 @@ Shader "Custom RP/Lit" {
             #pragma vertex ShadowPassVertex
             #pragma fragment ShadowPassFragment
 
-            #include "ShadowPass.hlsl"
+            #include "../ShaderLibrary/ShadowPass.hlsl"
 
             ENDHLSL
         }

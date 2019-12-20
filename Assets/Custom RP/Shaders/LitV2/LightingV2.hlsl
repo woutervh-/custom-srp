@@ -15,7 +15,9 @@ float3 GetIncomingLight (Surface surface, Light light) {
     spotFade = saturate(spotFade * light.attenuation.z + light.attenuation.w);
     spotFade *= spotFade;
 
-    diffuse *= spotFade * rangeFade / distanceSqr;
+    float shadowAttenuation = GetShadowAttenuation(light, surface.worldPosition);
+
+    diffuse *= shadowAttenuation * spotFade * rangeFade / distanceSqr;
 
     return diffuse * light.color.rgb;
 }

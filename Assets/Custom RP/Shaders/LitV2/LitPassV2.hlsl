@@ -1,11 +1,12 @@
-#ifndef CUSTOM_LIT_PASS_INCLUDED
-#define CUSTOM_LIT_PASS_INCLUDED
+#ifndef LIT_PASS_V2_INCLUDED
+#define LIT_PASS_V2_INCLUDED
 
-#include "Common.hlsl"
-#include "Surface.hlsl"
-#include "Light.hlsl"
-#include "BRDF.hlsl"
-#include "Lighting.hlsl"
+#include "../ShaderLibrary/Common.hlsl"
+#include "../ShaderLibrary/Surface.hlsl"
+#include "LightV2.hlsl"
+#include "../ShaderLibrary/BRDF.hlsl"
+#include "ShadowsV2.hlsl"
+#include "LightingV2.hlsl"
 
 TEXTURE2D(_BaseMap);
 SAMPLER(sampler_BaseMap);
@@ -69,12 +70,9 @@ float4 LitPassFragment (Varyings input) : SV_TARGET {
     surface.metallic = UNITY_ACCESS_INSTANCED_PROP(UnityPerMaterial, _Metallic);
     surface.smoothness = UNITY_ACCESS_INSTANCED_PROP(UnityPerMaterial, _Smoothness);
 
-    #if defined(_PREMULTIPLY_ALPHA)
-        BRDF brdf = GetBRDF(surface, true);
-    #else
-        BRDF brdf = GetBRDF(surface);
-    #endif
+    BRDF brdf = GetBRDF(surface);
     float3 color = GetLighting(surface, brdf);
+    
     return float4(color, surface.alpha);
 }
 
