@@ -79,7 +79,7 @@ public partial class CameraRendererV2
 
     void CleanupBuffers()
     {
-        if (shadowData.shadowMaps != null)
+        if (shadowData != null && shadowData.shadowMaps != null)
         {
             RenderTexture.ReleaseTemporary(shadowData.shadowMaps);
         }
@@ -143,6 +143,11 @@ public partial class CameraRendererV2
 
     void RenderShadows(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize)
     {
+        if (shadowData == null)
+        {
+            return;
+        }
+
         for (int i = 0; i < cullingResults.visibleLights.Length; i++)
         {
             VisibleLight visibleLight = cullingResults.visibleLights[i];
