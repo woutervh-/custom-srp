@@ -37,7 +37,7 @@ public partial class CameraRenderer : IDisposable
 
         CullingResults cullingResults = context.Cull(ref cullingParameters);
 
-        RenderShadows(ref context, ref cullingResults, shadowMapSize, shadowCascades, shadowCascadesSplit);
+        RenderShadows(ref context, ref cullingResults, shadowMapSize, shadowDistance, shadowCascades, shadowCascadesSplit);
         SetupShadowInput(ref context);
         SetupLights(ref context, ref cullingResults, shadowMapSize, shadowDistance);
         SetLightingInput(ref context, ref cullingResults);

@@ -64,7 +64,7 @@ public partial class CameraRenderer
         return scaleOffset * (projectionMatrix * viewMatrix);
     }
 
-    void RenderShadows(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize, int shadowCascades, Vector3 shadowCascadesSplit)
+    void RenderShadows(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize, float shadowDistance, int shadowCascades, Vector3 shadowCascadesSplit)
     {
         shadowMaps = RenderTexture.GetTemporary(shadowMapSize, shadowMapSize, 16, RenderTextureFormat.Shadowmap);
         shadowMaps.dimension = TextureDimension.Tex2DArray;
@@ -120,6 +120,8 @@ public partial class CameraRenderer
                         hasHardShadows = hasHardShadows || visibleLight.light.shadows == LightShadows.Hard;
                         shadowData[i].x = visibleLight.light.shadowStrength;
                         shadowData[i].y = visibleLight.light.shadows == LightShadows.Soft ? 1f : 0f;
+                        shadowData[i].z = shadowDistance * shadowDistance * 0.85f * 0.85f;
+                        shadowData[i].w = shadowDistance * shadowDistance;
 
                         Vector2Int tileOffset = new Vector2Int(j % 2, j / 2);
                         Rect tileViewport = new Rect(tileOffset.x * tileSize, tileOffset.y * tileSize, tileSize, tileSize);
@@ -151,15 +153,6 @@ public partial class CameraRenderer
                             cullingSpheres.Add(cullingSphere);
                         }
                     }
-                }
-                if (cascadeCount == 4)
-                {
-                    Matrix4x4 additionalMatrix = Matrix4x4.zero;
-                    if (SystemInfo.usesReversedZBuffer)
-                    {
-                        additionalMatrix.m33 = 1f;
-                    }
-                    worldToShadowMatrices.Add(additionalMatrix);
                 }
             }
         }

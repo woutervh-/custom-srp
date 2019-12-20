@@ -66,7 +66,10 @@ float GetShadowAttenuation (Light light, float3 worldPosition) {
         attenuation = HardShadowAttenuation(light, shadowPosition.xyz);
     #endif
 
-    return lerp(1, attenuation, light.shadowData.x);
+    float3 cameraToFragment = worldPosition - _WorldSpaceCameraPos;
+    float fade = 1 - smoothstep(light.shadowData.z, light.shadowData.w, dot(cameraToFragment, cameraToFragment));
+
+    return lerp(1, attenuation, light.shadowData.x * fade);
 }
 
 float3 GetIncomingLight (Surface surface, Light light) {
