@@ -179,7 +179,30 @@ public partial class CameraRendererV2
 
     void RenderSpotLight(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize, int index, ref VisibleLight visibleLight)
     {
-        // TODO:
+        Bounds shadowBounds;
+        if (visibleLight.light.shadows != LightShadows.None && cullingResults.GetShadowCasterBounds(index, out shadowBounds))
+        {
+            CoreUtils.SetRenderTarget(buffer, shadowMaps, ClearFlag.Depth, 0, CubemapFace.Unknown, index);
+            SubmitBuffer(ref context, buffer);
+
+            Matrix4x4 viewMatrix;
+            Matrix4x4 projectionMatrix;
+            ShadowSplitData splitData;
+
+            if (cullingResults.ComputeSpotShadowMatricesAndCullingPrimitives(index, out viewMatrix, out projectionMatrix, out splitData))
+            {
+                Rect tileViewport = new Rect(0, 0, shadowMapSize, shadowMapSize);
+
+                buffer.SetViewport(new Rect(tileViewport));
+                buffer.SetViewProjectionMatrices(viewMatrix, projectionMatrix);
+                ShaderInput.SetShadowBias(buffer, visibleLight.light.shadowBias);
+                SubmitBuffer(ref context, buffer);
+
+                ShadowDrawingSettings shadowSettings = new ShadowDrawingSettings(cullingResults, index);
+                shadowSettings.splitData = splitData;
+                context.DrawShadows(ref shadowSettings);
+            }
+        }
     }
 
 #if UNITY_EDITOR
