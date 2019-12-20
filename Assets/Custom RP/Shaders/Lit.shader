@@ -27,6 +27,7 @@ Shader "Custom RP/Lit" {
             #pragma shader_feature _CLIPPING
             #pragma shader_feature _PREMULTIPLY_ALPHA
             #pragma multi_compile_instancing
+            #pragma multi_compile _ _CASCADES
             #pragma multi_compile _ _SHADOWS_SOFT
             #pragma multi_compile _ _SHADOWS_HARD
             #pragma require 2darray

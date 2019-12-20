@@ -5,6 +5,7 @@ public static partial class ShaderInput
 {
     const string shadowsSoftKeyword = "_SHADOWS_SOFT";
     const string shadowsHardKeyword = "_SHADOWS_HARD";
+    const string cascadesKeyword = "_CASCADES";
     static int lightsCountId = Shader.PropertyToID("_LightsCount");
     static int lightsIndicesId = Shader.PropertyToID("_LightsIndices");
     static int lightsPositionsId = Shader.PropertyToID("_LightsPositions");
@@ -27,6 +28,11 @@ public static partial class ShaderInput
     public static void SetHardShadows(CommandBuffer buffer, bool flag)
     {
         CoreUtils.SetKeyword(buffer, shadowsHardKeyword, flag);
+    }
+    
+    public static void SetCascades(CommandBuffer buffer, bool flag)
+    {
+        CoreUtils.SetKeyword(buffer, cascadesKeyword, flag);
     }
 
     public static void SetLightsCount(CommandBuffer buffer, int count)
