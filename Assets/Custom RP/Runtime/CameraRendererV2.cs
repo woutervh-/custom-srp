@@ -1,4 +1,3 @@
-using System;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -31,7 +30,7 @@ public partial class CameraRendererV2
     ComputeBuffer attenuationsBuffer;
     ComputeBuffer lightIndicesBuffer;
 
-    RenderTexture shadowMaps;
+    ShadowData shadowData;
 
     CommandBuffer buffer = new CommandBuffer
     {
@@ -55,6 +54,7 @@ public partial class CameraRendererV2
         cullingParameters.shadowDistance = Mathf.Min(shadowDistance, camera.farClipPlane);
         CullingResults cullingResults = context.Cull(ref cullingParameters);
 
+        SetupShadows(ref context, ref cullingResults, shadowMapSize);
         RenderShadows(ref context, ref cullingResults, shadowMapSize);
         SetupLights(ref context, ref cullingResults);
         ApplyLights(ref context, ref cullingResults);
@@ -79,9 +79,9 @@ public partial class CameraRendererV2
 
     void CleanupBuffers()
     {
-        if (shadowMaps != null)
+        if (shadowData.shadowMaps != null)
         {
-            RenderTexture.ReleaseTemporary(shadowMaps);
+            RenderTexture.ReleaseTemporary(shadowData.shadowMaps);
         }
         if (colorsBuffer != null)
         {
@@ -105,18 +105,23 @@ public partial class CameraRendererV2
         }
     }
 
-    void RenderShadows(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize)
+    void SetupShadows(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize)
     {
+        shadowData = new ShadowData();
+
         if (cullingResults.visibleLights.Length <= 0)
         {
+            shadowData.lights = null;
+            shadowData.shadowMaps = null;
             return;
         }
 
-        shadowMaps = RenderTexture.GetTemporary(shadowMapSize, shadowMapSize, 16, RenderTextureFormat.Shadowmap);
-        shadowMaps.dimension = TextureDimension.Tex2DArray;
-        shadowMaps.volumeDepth = cullingResults.visibleLights.Length;
-        shadowMaps.filterMode = FilterMode.Bilinear;
-        shadowMaps.wrapMode = TextureWrapMode.Clamp;
+        shadowData.lights = new ShadowLight[cullingResults.visibleLights.Length];
+        shadowData.shadowMaps = RenderTexture.GetTemporary(shadowMapSize, shadowMapSize, 16, RenderTextureFormat.Shadowmap);
+        shadowData.shadowMaps.dimension = TextureDimension.Tex2DArray;
+        shadowData.shadowMaps.volumeDepth = cullingResults.visibleLights.Length;
+        shadowData.shadowMaps.filterMode = FilterMode.Bilinear;
+        shadowData.shadowMaps.wrapMode = TextureWrapMode.Clamp;
 
         for (int i = 0; i < cullingResults.visibleLights.Length; i++)
         {
@@ -124,25 +129,45 @@ public partial class CameraRendererV2
             switch (cullingResults.visibleLights[i].lightType)
             {
                 case LightType.Directional:
-                    RenderDirectionalLight(ref context, ref cullingResults, shadowMapSize, i, ref visibleLight);
+                    SetupDirectionalShadow(ref context, ref cullingResults, shadowMapSize, i, ref visibleLight);
                     break;
-                case LightType.Point:
-                    RenderPointLight(ref context, ref cullingResults, shadowMapSize, i, ref visibleLight);
-                    break;
+                // case LightType.Point:
+                //     SetupPointShadow(ref context, ref cullingResults, shadowMapSize, i, ref visibleLight);
+                //     break;
                 case LightType.Spot:
-                    RenderSpotLight(ref context, ref cullingResults, shadowMapSize, i, ref visibleLight);
+                    SetupSpotShadow(ref context, ref cullingResults, shadowMapSize, i, ref visibleLight);
                     break;
             }
         }
     }
 
-    void RenderDirectionalLight(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize, int index, ref VisibleLight visibleLight)
+    void RenderShadows(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize)
+    {
+        for (int i = 0; i < cullingResults.visibleLights.Length; i++)
+        {
+            VisibleLight visibleLight = cullingResults.visibleLights[i];
+            switch (cullingResults.visibleLights[i].lightType)
+            {
+                case LightType.Directional:
+                    RenderDirectionalShadow(ref context, ref cullingResults, shadowMapSize, i, ref visibleLight);
+                    break;
+                // case LightType.Point:
+                //     RenderPointLight(ref context, ref cullingResults, shadowMapSize, i, ref visibleLight);
+                //     break;
+                case LightType.Spot:
+                    RenderSpotShadow(ref context, ref cullingResults, shadowMapSize, i, ref visibleLight);
+                    break;
+            }
+        }
+    }
+
+    void SetupDirectionalShadow(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize, int index, ref VisibleLight visibleLight)
     {
         Bounds shadowBounds;
         if (visibleLight.light.shadows != LightShadows.None && cullingResults.GetShadowCasterBounds(index, out shadowBounds))
         {
-            CoreUtils.SetRenderTarget(buffer, shadowMaps, ClearFlag.Depth, 0, CubemapFace.Unknown, index);
-            SubmitBuffer(ref context, buffer);
+            ShadowLight shadowLight = new ShadowLight();
+            shadowLight.cascades = new ShadowCascade[4];
 
             int tileSize = shadowMapSize / 2;
             for (int j = 0; j < 4; j++)
@@ -153,37 +178,61 @@ public partial class CameraRendererV2
 
                 if (cullingResults.ComputeDirectionalShadowMatricesAndCullingPrimitives(index, j, 4, fourCascadesSplit, tileSize, visibleLight.light.shadowNearPlane, out viewMatrix, out projectionMatrix, out splitData))
                 {
-                    Vector2Int tileOffset = new Vector2Int(j % 2, j / 2);
-                    Rect tileViewport = new Rect(tileOffset.x * tileSize, tileOffset.y * tileSize, tileSize, tileSize);
-
-                    buffer.SetViewport(new Rect(tileViewport));
-                    buffer.EnableScissorRect(new Rect(tileViewport.x + 4f, tileViewport.y + 4f, tileSize - 8f, tileSize - 8f));
-                    buffer.SetViewProjectionMatrices(viewMatrix, projectionMatrix);
-                    ShaderInput.SetShadowBias(buffer, visibleLight.light.shadowBias);
-                    SubmitBuffer(ref context, buffer);
-
-                    ShadowDrawingSettings shadowSettings = new ShadowDrawingSettings(cullingResults, index);
-                    shadowSettings.splitData = splitData;
-                    context.DrawShadows(ref shadowSettings);
+                    ShadowCascade shadowCascade = new ShadowCascade();
+                    shadowCascade.viewMatrix = viewMatrix;
+                    shadowCascade.projectionMatrix = projectionMatrix;
+                    shadowCascade.splitData = splitData;
+                    shadowLight.cascades[j] = shadowCascade;
                 }
             }
+
+            shadowData.lights[index] = shadowLight;
         }
+    }
+
+    void RenderDirectionalShadow(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize, int index, ref VisibleLight visibleLight)
+    {
+        if (shadowData.lights[index] == null)
+        {
+            return;
+        }
+
+        CoreUtils.SetRenderTarget(buffer, shadowData.shadowMaps, ClearFlag.Depth, 0, CubemapFace.Unknown, index);
+        SubmitBuffer(ref context, buffer);
+
+        int tileSize = shadowMapSize / 2;
+        for (int j = 0; j < 4; j++)
+        {
+            if (shadowData.lights[index].cascades[j] == null)
+            {
+                continue;
+            }
+
+            Vector2Int tileOffset = new Vector2Int(j % 2, j / 2);
+            Rect tileViewport = new Rect(tileOffset.x * tileSize, tileOffset.y * tileSize, tileSize, tileSize);
+
+            buffer.SetViewport(new Rect(tileViewport));
+            buffer.EnableScissorRect(new Rect(tileViewport.x + 4f, tileViewport.y + 4f, tileSize - 8f, tileSize - 8f));
+            buffer.SetViewProjectionMatrices(shadowData.lights[index].cascades[j].viewMatrix, shadowData.lights[index].cascades[j].projectionMatrix);
+            ShaderInput.SetShadowBias(buffer, visibleLight.light.shadowBias);
+            SubmitBuffer(ref context, buffer);
+
+            ShadowDrawingSettings shadowSettings = new ShadowDrawingSettings(cullingResults, index);
+            shadowSettings.splitData = shadowData.lights[index].cascades[j].splitData;
+            context.DrawShadows(ref shadowSettings);
+        }
+
         buffer.DisableScissorRect();
         SubmitBuffer(ref context, buffer);
     }
 
-    void RenderPointLight(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize, int index, ref VisibleLight visibleLight)
-    {
-        // TODO:
-    }
-
-    void RenderSpotLight(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize, int index, ref VisibleLight visibleLight)
+    void SetupSpotShadow(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize, int index, ref VisibleLight visibleLight)
     {
         Bounds shadowBounds;
         if (visibleLight.light.shadows != LightShadows.None && cullingResults.GetShadowCasterBounds(index, out shadowBounds))
         {
-            CoreUtils.SetRenderTarget(buffer, shadowMaps, ClearFlag.Depth, 0, CubemapFace.Unknown, index);
-            SubmitBuffer(ref context, buffer);
+            ShadowLight shadowLight = new ShadowLight();
+            shadowLight.cascades = new ShadowCascade[1];
 
             Matrix4x4 viewMatrix;
             Matrix4x4 projectionMatrix;
@@ -191,18 +240,41 @@ public partial class CameraRendererV2
 
             if (cullingResults.ComputeSpotShadowMatricesAndCullingPrimitives(index, out viewMatrix, out projectionMatrix, out splitData))
             {
-                Rect tileViewport = new Rect(0, 0, shadowMapSize, shadowMapSize);
-
-                buffer.SetViewport(new Rect(tileViewport));
-                buffer.SetViewProjectionMatrices(viewMatrix, projectionMatrix);
-                ShaderInput.SetShadowBias(buffer, visibleLight.light.shadowBias);
-                SubmitBuffer(ref context, buffer);
-
-                ShadowDrawingSettings shadowSettings = new ShadowDrawingSettings(cullingResults, index);
-                shadowSettings.splitData = splitData;
-                context.DrawShadows(ref shadowSettings);
+                ShadowCascade shadowCascade = new ShadowCascade();
+                shadowCascade.viewMatrix = viewMatrix;
+                shadowCascade.projectionMatrix = projectionMatrix;
+                shadowCascade.splitData = splitData;
+                shadowLight.cascades[0] = shadowCascade;
             }
+
+            shadowData.lights[index] = shadowLight;
         }
+    }
+
+    void RenderSpotShadow(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize, int index, ref VisibleLight visibleLight)
+    {
+        if (shadowData.lights[index] == null)
+        {
+            return;
+        }
+
+        CoreUtils.SetRenderTarget(buffer, shadowData.shadowMaps, ClearFlag.Depth, 0, CubemapFace.Unknown, index);
+        SubmitBuffer(ref context, buffer);
+
+        if (shadowData.lights[index].cascades[0] == null)
+        {
+            return;
+        }
+
+        Rect tileViewport = new Rect(0, 0, shadowMapSize, shadowMapSize);
+        buffer.SetViewport(new Rect(tileViewport));
+        buffer.SetViewProjectionMatrices(shadowData.lights[index].cascades[0].viewMatrix, shadowData.lights[index].cascades[0].projectionMatrix);
+        ShaderInput.SetShadowBias(buffer, visibleLight.light.shadowBias);
+        SubmitBuffer(ref context, buffer);
+
+        ShadowDrawingSettings shadowSettings = new ShadowDrawingSettings(cullingResults, index);
+        shadowSettings.splitData = shadowData.lights[index].cascades[0].splitData;
+        context.DrawShadows(ref shadowSettings);
     }
 
 #if UNITY_EDITOR
@@ -349,5 +421,23 @@ public partial class CameraRendererV2
         attenuations[index].x = 1f / Mathf.Max(visibleLight.range * visibleLight.range, 0.00001f);
         attenuations[index].z = 1f / angleRange;
         attenuations[index].w = -outerCos / angleRange;
+    }
+
+    class ShadowCascade
+    {
+        public Matrix4x4 viewMatrix;
+        public Matrix4x4 projectionMatrix;
+        public ShadowSplitData splitData;
+    }
+
+    class ShadowLight
+    {
+        public ShadowCascade[] cascades;
+    }
+
+    class ShadowData
+    {
+        public RenderTexture shadowMaps;
+        public ShadowLight[] lights;
     }
 }
