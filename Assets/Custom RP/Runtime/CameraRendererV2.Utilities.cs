@@ -65,6 +65,20 @@ public partial class CameraRendererV2
         }
     }
 
+    static ComputeBuffer CreateBuffer(int[] data)
+    {
+        if (data != null && data.Length >= 1)
+        {
+            ComputeBuffer buffer = new ComputeBuffer(data.Length, 4);
+            buffer.SetData(data);
+            return buffer;
+        }
+        else
+        {
+            return null;
+        }
+    }
+
     static Matrix4x4 CreateWorldToShadowMatrix(ref Matrix4x4 viewMatrix, ref Matrix4x4 projectionMatrix)
     {
         if (SystemInfo.usesReversedZBuffer)

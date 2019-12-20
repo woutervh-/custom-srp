@@ -19,6 +19,7 @@ public static partial class ShaderInput
     static int shadowBiasId = Shader.PropertyToID("_ShadowBias");
     static int shadowMapSizeId = Shader.PropertyToID("_ShadowMapSize");
     static int worldToShadowMatricesId = Shader.PropertyToID("_WorldToShadowMatrices");
+    static int cascadeDataId = Shader.PropertyToID("_CascadeData");
 
     public static void SetSoftShadows(CommandBuffer buffer, bool flag)
     {
@@ -29,7 +30,7 @@ public static partial class ShaderInput
     {
         CoreUtils.SetKeyword(buffer, shadowsHardKeyword, flag);
     }
-    
+
     public static void SetCascades(CommandBuffer buffer, bool flag)
     {
         CoreUtils.SetKeyword(buffer, cascadesKeyword, flag);
@@ -98,5 +99,10 @@ public static partial class ShaderInput
     public static void SetShadowCascadeCullingSpheres(CommandBuffer buffer, ComputeBuffer shadowCascadeCullingSpheres)
     {
         buffer.SetGlobalBuffer(shadowCascadeCullingSpheresId, shadowCascadeCullingSpheres);
+    }
+
+    public static void SetCascadeData(CommandBuffer buffer, ComputeBuffer cascadeData)
+    {
+        buffer.SetGlobalBuffer(cascadeDataId, cascadeData);
     }
 }

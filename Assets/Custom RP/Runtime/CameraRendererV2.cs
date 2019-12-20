@@ -32,7 +32,9 @@ public partial class CameraRendererV2
 
     ShadowData shadowData;
     Matrix4x4[] worldToShadowMatrices;
+    Vector2Int[] cascadeData;
     ComputeBuffer worldToShadowMatricesBuffer;
+    ComputeBuffer cascadeDataBuffer;
 
     CommandBuffer buffer = new CommandBuffer
     {
@@ -114,25 +116,54 @@ public partial class CameraRendererV2
         {
             worldToShadowMatricesBuffer.Release();
         }
+        if (cascadeDataBuffer != null)
+        {
+            cascadeDataBuffer.Release();
+        }
     }
 
     void SetupShadows(ref ScriptableRenderContext context, ref CullingResults cullingResults)
     {
+        if (shadowData == null || shadowData.lights == null || shadowData.shadowMaps == null)
+        {
+            worldToShadowMatrices = null;
+            cascadeData = null;
+            return;
+        }
+
         int totalCascadeCount = 0;
         for (int i = 0; i < cullingResults.visibleLights.Length; i++)
         {
+            if (shadowData.lights[i] == null)
+            {
+                continue;
+            }
             totalCascadeCount += shadowData.lights[i].cascades.Length;
         }
 
         worldToShadowMatrices = new Matrix4x4[totalCascadeCount];
-        int cascadeIndex = 0;
-        for (int i = 0; i < cullingResults.visibleLights.Length; i++)
+        for (int i = 0, cascadeIndex = 0; i < cullingResults.visibleLights.Length; i++)
         {
+            if (shadowData.lights[i] == null)
+            {
+                continue;
+            }
             for (int j = 0; j < shadowData.lights[i].cascades.Length; j++)
             {
                 worldToShadowMatrices[cascadeIndex] = shadowData.lights[i].cascades[j].worldToShadowMatrix;
                 cascadeIndex += 1;
             }
+        }
+
+        cascadeData = new Vector2Int[cullingResults.visibleLights.Length];
+        for (int i = 0, cascadeIndex = 0; i < cullingResults.visibleLights.Length; i++)
+        {
+            if (shadowData.lights[i] == null)
+            {
+                continue;
+            }
+            cascadeData[i] = new Vector2Int(cascadeIndex, shadowData.lights[i].cascades.Length == 1 ? 0 : 1);
+            cascadeIndex += shadowData.lights[i].cascades.Length;
         }
     }
 
@@ -147,6 +178,9 @@ public partial class CameraRendererV2
 
         worldToShadowMatricesBuffer = CreateBuffer(worldToShadowMatrices);
         ShaderInput.SetWorldToShadowMatrices(buffer, worldToShadowMatricesBuffer);
+
+        cascadeDataBuffer = CreateBuffer(cascadeData);
+        ShaderInput.SetCascadeData(buffer, cascadeDataBuffer);
     }
 
     void SetupShadowPass(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize)
