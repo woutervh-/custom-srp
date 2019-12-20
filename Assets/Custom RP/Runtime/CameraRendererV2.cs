@@ -5,6 +5,7 @@ using UnityEngine.Rendering;
 
 public partial class CameraRendererV2
 {
+    static Vector3 fourCascadesSplit = new Vector3(0.067f, 0.2f, 0.467f);
     static ShaderTagId unlitShaderTagId = new ShaderTagId("SRPDefaultUnlit");
     static ShaderTagId litShaderTagId = new ShaderTagId("CustomLit");
 
@@ -30,6 +31,8 @@ public partial class CameraRendererV2
     ComputeBuffer attenuationsBuffer;
     ComputeBuffer lightIndicesBuffer;
 
+    RenderTexture shadowMaps;
+
     CommandBuffer buffer = new CommandBuffer
     {
         name = "Command Buffer"
@@ -52,6 +55,7 @@ public partial class CameraRendererV2
         cullingParameters.shadowDistance = Mathf.Min(shadowDistance, camera.farClipPlane);
         CullingResults cullingResults = context.Cull(ref cullingParameters);
 
+        RenderShadows(ref context, ref cullingResults, shadowMapSize);
         SetupLights(ref context, ref cullingResults);
         ApplyLights(ref context, ref cullingResults);
 
@@ -62,9 +66,7 @@ public partial class CameraRendererV2
             flags == CameraClearFlags.Color,
             flags == CameraClearFlags.Color ? camera.backgroundColor.linear : Color.clear
         );
-        SubmitBuffer(ref context, buffer);
         DrawVisibleGeometry(ref context, camera, ref cullingResults, useDynamicBatching, useGPUInstancing);
-        SubmitBuffer(ref context, buffer);
 
 #if UNITY_EDITOR
         DrawUnsupportedShaders(ref context, camera, ref cullingResults);
@@ -77,6 +79,10 @@ public partial class CameraRendererV2
 
     void CleanupBuffers()
     {
+        if (shadowMaps != null)
+        {
+            RenderTexture.ReleaseTemporary(shadowMaps);
+        }
         if (colorsBuffer != null)
         {
             colorsBuffer.Release();
@@ -97,6 +103,83 @@ public partial class CameraRendererV2
         {
             lightIndicesBuffer.Release();
         }
+    }
+
+    void RenderShadows(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize)
+    {
+        if (cullingResults.visibleLights.Length <= 0)
+        {
+            return;
+        }
+
+        shadowMaps = RenderTexture.GetTemporary(shadowMapSize, shadowMapSize, 16, RenderTextureFormat.Shadowmap);
+        shadowMaps.dimension = TextureDimension.Tex2DArray;
+        shadowMaps.volumeDepth = cullingResults.visibleLights.Length;
+        shadowMaps.filterMode = FilterMode.Bilinear;
+        shadowMaps.wrapMode = TextureWrapMode.Clamp;
+
+        for (int i = 0; i < cullingResults.visibleLights.Length; i++)
+        {
+            VisibleLight visibleLight = cullingResults.visibleLights[i];
+            switch (cullingResults.visibleLights[i].lightType)
+            {
+                case LightType.Directional:
+                    RenderDirectionalLight(ref context, ref cullingResults, shadowMapSize, i, ref visibleLight);
+                    break;
+                case LightType.Point:
+                    RenderPointLight(ref context, ref cullingResults, shadowMapSize, i, ref visibleLight);
+                    break;
+                case LightType.Spot:
+                    RenderSpotLight(ref context, ref cullingResults, shadowMapSize, i, ref visibleLight);
+                    break;
+            }
+        }
+    }
+
+    void RenderDirectionalLight(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize, int index, ref VisibleLight visibleLight)
+    {
+        Bounds shadowBounds;
+        if (visibleLight.light.shadows != LightShadows.None && cullingResults.GetShadowCasterBounds(index, out shadowBounds))
+        {
+            CoreUtils.SetRenderTarget(buffer, shadowMaps, ClearFlag.Depth, 0, CubemapFace.Unknown, index);
+            SubmitBuffer(ref context, buffer);
+
+            int tileSize = shadowMapSize / 2;
+            for (int j = 0; j < 4; j++)
+            {
+                Matrix4x4 viewMatrix;
+                Matrix4x4 projectionMatrix;
+                ShadowSplitData splitData;
+
+                if (cullingResults.ComputeDirectionalShadowMatricesAndCullingPrimitives(index, j, 4, fourCascadesSplit, tileSize, visibleLight.light.shadowNearPlane, out viewMatrix, out projectionMatrix, out splitData))
+                {
+                    Vector2Int tileOffset = new Vector2Int(j % 2, j / 2);
+                    Rect tileViewport = new Rect(tileOffset.x * tileSize, tileOffset.y * tileSize, tileSize, tileSize);
+
+                    buffer.SetViewport(new Rect(tileViewport));
+                    buffer.EnableScissorRect(new Rect(tileViewport.x + 4f, tileViewport.y + 4f, tileSize - 8f, tileSize - 8f));
+                    buffer.SetViewProjectionMatrices(viewMatrix, projectionMatrix);
+                    ShaderInput.SetShadowBias(buffer, visibleLight.light.shadowBias);
+                    SubmitBuffer(ref context, buffer);
+
+                    ShadowDrawingSettings shadowSettings = new ShadowDrawingSettings(cullingResults, index);
+                    shadowSettings.splitData = splitData;
+                    context.DrawShadows(ref shadowSettings);
+                }
+            }
+        }
+        buffer.DisableScissorRect();
+        SubmitBuffer(ref context, buffer);
+    }
+
+    void RenderPointLight(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize, int index, ref VisibleLight visibleLight)
+    {
+        // TODO:
+    }
+
+    void RenderSpotLight(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize, int index, ref VisibleLight visibleLight)
+    {
+        // TODO:
     }
 
 #if UNITY_EDITOR

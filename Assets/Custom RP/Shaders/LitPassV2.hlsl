@@ -1,5 +1,5 @@
-#ifndef CUSTOM_LIT_PASS_INCLUDED
-#define CUSTOM_LIT_PASS_INCLUDED
+#ifndef LIT_PASS_V2_INCLUDED
+#define LIT_PASS_V2_INCLUDED
 
 #include "Common.hlsl"
 #include "Surface.hlsl"
