@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -23,7 +24,6 @@ public partial class CameraRendererV2
     Vector4[] positions;
     Vector4[] spotDirections;
     Vector4[] attenuations;
-
     ComputeBuffer colorsBuffer;
     ComputeBuffer positionsBuffer;
     ComputeBuffer spotDirectionsBuffer;
@@ -31,6 +31,8 @@ public partial class CameraRendererV2
     ComputeBuffer lightIndicesBuffer;
 
     ShadowData shadowData;
+    Matrix4x4[] worldToShadowMatrices;
+    ComputeBuffer worldToShadowMatricesBuffer;
 
     CommandBuffer buffer = new CommandBuffer
     {
@@ -54,10 +56,15 @@ public partial class CameraRendererV2
         cullingParameters.shadowDistance = Mathf.Min(shadowDistance, camera.farClipPlane);
         CullingResults cullingResults = context.Cull(ref cullingParameters);
 
-        SetupShadows(ref context, ref cullingResults, shadowMapSize);
-        RenderShadows(ref context, ref cullingResults, shadowMapSize);
+        // Shadow pass for shadow maps.
+        SetupShadowPass(ref context, ref cullingResults, shadowMapSize);
+        RenderShadowPass(ref context, ref cullingResults, shadowMapSize);
+
+        // Camera pass for screen.
         SetupLights(ref context, ref cullingResults);
+        SetupShadows(ref context, ref cullingResults);
         ApplyLights(ref context, ref cullingResults);
+        ApplyShadows(ref context, ref cullingResults);
 
         context.SetupCameraProperties(camera);
         CameraClearFlags flags = camera.clearFlags;
@@ -103,9 +110,46 @@ public partial class CameraRendererV2
         {
             lightIndicesBuffer.Release();
         }
+        if (worldToShadowMatricesBuffer != null)
+        {
+            worldToShadowMatricesBuffer.Release();
+        }
     }
 
-    void SetupShadows(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize)
+    void SetupShadows(ref ScriptableRenderContext context, ref CullingResults cullingResults)
+    {
+        int totalCascadeCount = 0;
+        for (int i = 0; i < cullingResults.visibleLights.Length; i++)
+        {
+            totalCascadeCount += shadowData.lights[i].cascades.Length;
+        }
+
+        worldToShadowMatrices = new Matrix4x4[totalCascadeCount];
+        int cascadeIndex = 0;
+        for (int i = 0; i < cullingResults.visibleLights.Length; i++)
+        {
+            for (int j = 0; j < shadowData.lights[i].cascades.Length; j++)
+            {
+                worldToShadowMatrices[cascadeIndex] = shadowData.lights[i].cascades[j].worldToShadowMatrix;
+                cascadeIndex += 1;
+            }
+        }
+    }
+
+    void ApplyShadows(ref ScriptableRenderContext context, ref CullingResults cullingResults)
+    {
+        if (shadowData == null || shadowData.lights == null || shadowData.shadowMaps == null)
+        {
+            return;
+        }
+
+        ShaderInput.SetShadowMaps(buffer, shadowData.shadowMaps);
+
+        worldToShadowMatricesBuffer = CreateBuffer(worldToShadowMatrices);
+        ShaderInput.SetWorldToShadowMatrices(buffer, worldToShadowMatricesBuffer);
+    }
+
+    void SetupShadowPass(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize)
     {
         shadowData = new ShadowData();
 
@@ -141,7 +185,7 @@ public partial class CameraRendererV2
         }
     }
 
-    void RenderShadows(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize)
+    void RenderShadowPass(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize)
     {
         if (shadowData == null)
         {
@@ -173,22 +217,58 @@ public partial class CameraRendererV2
         {
             ShadowLight shadowLight = new ShadowLight();
             shadowLight.cascades = new ShadowCascade[4];
+            shadowLight.tileSize = shadowMapSize / 2;
 
-            int tileSize = shadowMapSize / 2;
             for (int j = 0; j < 4; j++)
             {
                 Matrix4x4 viewMatrix;
                 Matrix4x4 projectionMatrix;
                 ShadowSplitData splitData;
 
-                if (cullingResults.ComputeDirectionalShadowMatricesAndCullingPrimitives(index, j, 4, fourCascadesSplit, tileSize, visibleLight.light.shadowNearPlane, out viewMatrix, out projectionMatrix, out splitData))
+                if (cullingResults.ComputeDirectionalShadowMatricesAndCullingPrimitives(index, j, 4, fourCascadesSplit, shadowLight.tileSize, visibleLight.light.shadowNearPlane, out viewMatrix, out projectionMatrix, out splitData))
                 {
+                    Vector2Int tileOffset = new Vector2Int(j % 2, j / 2);
+                    Matrix4x4 tileMatrix = Matrix4x4.identity;
+                    tileMatrix.m00 = tileMatrix.m11 = 0.5f;
+                    tileMatrix.m03 = tileOffset.x * 0.5f;
+                    tileMatrix.m13 = tileOffset.y * 0.5f;
+
                     ShadowCascade shadowCascade = new ShadowCascade();
                     shadowCascade.viewMatrix = viewMatrix;
                     shadowCascade.projectionMatrix = projectionMatrix;
+                    shadowCascade.worldToShadowMatrix = tileMatrix * CreateWorldToShadowMatrix(ref viewMatrix, ref projectionMatrix);
+                    shadowCascade.tileOffset = tileOffset;
                     shadowCascade.splitData = splitData;
                     shadowLight.cascades[j] = shadowCascade;
                 }
+            }
+
+            shadowData.lights[index] = shadowLight;
+        }
+    }
+
+    void SetupSpotShadow(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize, int index, ref VisibleLight visibleLight)
+    {
+        Bounds shadowBounds;
+        if (visibleLight.light.shadows != LightShadows.None && cullingResults.GetShadowCasterBounds(index, out shadowBounds))
+        {
+            ShadowLight shadowLight = new ShadowLight();
+            shadowLight.cascades = new ShadowCascade[1];
+            shadowLight.tileSize = shadowMapSize;
+
+            Matrix4x4 viewMatrix;
+            Matrix4x4 projectionMatrix;
+            ShadowSplitData splitData;
+
+            if (cullingResults.ComputeSpotShadowMatricesAndCullingPrimitives(index, out viewMatrix, out projectionMatrix, out splitData))
+            {
+                ShadowCascade shadowCascade = new ShadowCascade();
+                shadowCascade.viewMatrix = viewMatrix;
+                shadowCascade.projectionMatrix = projectionMatrix;
+                shadowCascade.worldToShadowMatrix = CreateWorldToShadowMatrix(ref viewMatrix, ref projectionMatrix);
+                shadowCascade.tileOffset = Vector2Int.zero;
+                shadowCascade.splitData = splitData;
+                shadowLight.cascades[0] = shadowCascade;
             }
 
             shadowData.lights[index] = shadowLight;
@@ -205,7 +285,6 @@ public partial class CameraRendererV2
         CoreUtils.SetRenderTarget(buffer, shadowData.shadowMaps, ClearFlag.Depth, 0, CubemapFace.Unknown, index);
         SubmitBuffer(ref context, buffer);
 
-        int tileSize = shadowMapSize / 2;
         for (int j = 0; j < 4; j++)
         {
             if (shadowData.lights[index].cascades[j] == null)
@@ -213,11 +292,10 @@ public partial class CameraRendererV2
                 continue;
             }
 
-            Vector2Int tileOffset = new Vector2Int(j % 2, j / 2);
-            Rect tileViewport = new Rect(tileOffset.x * tileSize, tileOffset.y * tileSize, tileSize, tileSize);
+            Rect tileViewport = new Rect(shadowData.lights[index].cascades[j].tileOffset.x * shadowData.lights[index].tileSize, shadowData.lights[index].cascades[j].tileOffset.y * shadowData.lights[index].tileSize, shadowData.lights[index].tileSize, shadowData.lights[index].tileSize);
 
             buffer.SetViewport(new Rect(tileViewport));
-            buffer.EnableScissorRect(new Rect(tileViewport.x + 4f, tileViewport.y + 4f, tileSize - 8f, tileSize - 8f));
+            buffer.EnableScissorRect(new Rect(tileViewport.x + 4f, tileViewport.y + 4f, shadowData.lights[index].tileSize - 8f, shadowData.lights[index].tileSize - 8f));
             buffer.SetViewProjectionMatrices(shadowData.lights[index].cascades[j].viewMatrix, shadowData.lights[index].cascades[j].projectionMatrix);
             ShaderInput.SetShadowBias(buffer, visibleLight.light.shadowBias);
             SubmitBuffer(ref context, buffer);
@@ -229,31 +307,6 @@ public partial class CameraRendererV2
 
         buffer.DisableScissorRect();
         SubmitBuffer(ref context, buffer);
-    }
-
-    void SetupSpotShadow(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize, int index, ref VisibleLight visibleLight)
-    {
-        Bounds shadowBounds;
-        if (visibleLight.light.shadows != LightShadows.None && cullingResults.GetShadowCasterBounds(index, out shadowBounds))
-        {
-            ShadowLight shadowLight = new ShadowLight();
-            shadowLight.cascades = new ShadowCascade[1];
-
-            Matrix4x4 viewMatrix;
-            Matrix4x4 projectionMatrix;
-            ShadowSplitData splitData;
-
-            if (cullingResults.ComputeSpotShadowMatricesAndCullingPrimitives(index, out viewMatrix, out projectionMatrix, out splitData))
-            {
-                ShadowCascade shadowCascade = new ShadowCascade();
-                shadowCascade.viewMatrix = viewMatrix;
-                shadowCascade.projectionMatrix = projectionMatrix;
-                shadowCascade.splitData = splitData;
-                shadowLight.cascades[0] = shadowCascade;
-            }
-
-            shadowData.lights[index] = shadowLight;
-        }
     }
 
     void RenderSpotShadow(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize, int index, ref VisibleLight visibleLight)
@@ -432,11 +485,14 @@ public partial class CameraRendererV2
     {
         public Matrix4x4 viewMatrix;
         public Matrix4x4 projectionMatrix;
+        public Matrix4x4 worldToShadowMatrix;
+        public Vector2Int tileOffset;
         public ShadowSplitData splitData;
     }
 
     class ShadowLight
     {
+        public int tileSize;
         public ShadowCascade[] cascades;
     }
 
