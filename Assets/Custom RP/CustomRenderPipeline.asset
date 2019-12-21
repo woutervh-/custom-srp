@@ -16,6 +16,6 @@ MonoBehaviour:
   useGPUInstancing: 1
   useSRPBatcher: 1
   shadowMapSize: 2048
-  shadowDistance: 50
+  shadowDistance: 100
   shadowCascades: 4
   fourCascadesSplit: {x: 0.067, y: 0.2, z: 0.467}
