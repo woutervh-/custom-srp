@@ -1,5 +1,5 @@
-#ifndef LIGHT_V2_INCLUDED
-#define LIGHT_V2_INCLUDED
+#ifndef LIT_LIGHT_INCLUDED
+#define LIT_LIGHT_INCLUDED
 
 CBUFFER_START(_CustomLight)
     StructuredBuffer<float4> _LightsPositions;

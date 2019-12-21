@@ -9,7 +9,7 @@ public class CustomRenderPipeline : RenderPipeline
     float shadowDistance;
     int shadowCascades;
     Vector3 shadowCascadesSplit;
-    CameraRendererV2 cameraRenderer = new CameraRendererV2();
+    CameraRenderer cameraRenderer = new CameraRenderer();
 
     public CustomRenderPipeline(bool useDynamicBatching, bool useGPUInstancing, bool useSRPBatcher, int shadowMapSize, float shadowDistance, int shadowCascades, Vector3 shadowCascadesSplit)
     {

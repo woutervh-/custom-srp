@@ -1,5 +1,5 @@
-#ifndef SHADOWS_V2_INCLUDED
-#define SHADOWS_V2_INCLUDED
+#ifndef LIT_SHADOWS_INCLUDED
+#define LIT_SHADOWS_INCLUDED
 
 CBUFFER_START(_CustomShadows)
     StructuredBuffer<float4x4> _WorldToShadowMatrices;

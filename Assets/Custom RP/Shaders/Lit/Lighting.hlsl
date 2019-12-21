@@ -1,5 +1,5 @@
-#ifndef LIGHTING_V2_INCLUDED
-#define LIGHTING_V2_INCLUDED
+#ifndef LIT_LIGHTING_INCLUDED
+#define LIT_LIGHTING_INCLUDED
 
 float3 GetIncomingLight (Surface surface, Light light) {
     float3 lightVector = GetLightVector(surface, light);

@@ -1,4 +1,3 @@
-using System;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -64,5 +63,34 @@ public partial class CameraRenderer
         {
             return null;
         }
+    }
+
+    static ComputeBuffer CreateBuffer(int[] data)
+    {
+        if (data != null && data.Length >= 1)
+        {
+            ComputeBuffer buffer = new ComputeBuffer(data.Length, 4);
+            buffer.SetData(data);
+            return buffer;
+        }
+        else
+        {
+            return null;
+        }
+    }
+
+    static Matrix4x4 CreateWorldToShadowMatrix(Matrix4x4 viewMatrix, Matrix4x4 projectionMatrix)
+    {
+        if (SystemInfo.usesReversedZBuffer)
+        {
+            projectionMatrix.m20 = -projectionMatrix.m20;
+            projectionMatrix.m21 = -projectionMatrix.m21;
+            projectionMatrix.m22 = -projectionMatrix.m22;
+            projectionMatrix.m23 = -projectionMatrix.m23;
+        }
+        Matrix4x4 scaleOffset = Matrix4x4.identity;
+        scaleOffset.m00 = scaleOffset.m11 = scaleOffset.m22 = 0.5f;
+        scaleOffset.m03 = scaleOffset.m13 = scaleOffset.m23 = 0.5f;
+        return scaleOffset * (projectionMatrix * viewMatrix);
     }
 }
