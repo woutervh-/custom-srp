@@ -30,6 +30,8 @@ public partial class CameraRendererV2
     ComputeBuffer attenuationsBuffer;
     ComputeBuffer lightIndicesBuffer;
 
+    bool hasShadowsHard;
+    bool hasShadowsSoft;
     ShadowData shadowData;
     Matrix4x4[] worldToShadowMatrices;
     Vector3Int[] cascadeData;
@@ -202,6 +204,8 @@ public partial class CameraRendererV2
             }
         }
 
+        hasShadowsHard = false;
+        hasShadowsSoft = false;
         shadowSettings = new Vector4[cullingResults.visibleLights.Length];
         for (int i = 0; i < cullingResults.visibleLights.Length; i++)
         {
@@ -209,6 +213,14 @@ public partial class CameraRendererV2
             if (shadowData.lights[i] == null || cullingResults.visibleLights[i].light.shadows == LightShadows.None)
             {
                 continue;
+            }
+            if (cullingResults.visibleLights[i].light.shadows == LightShadows.Hard)
+            {
+                hasShadowsHard = true;
+            }
+            if (cullingResults.visibleLights[i].light.shadows == LightShadows.Soft)
+            {
+                hasShadowsSoft = true;
             }
             shadowSettings[i].x = cullingResults.visibleLights[i].light.shadowStrength;
             shadowSettings[i].y = cullingResults.visibleLights[i].light.shadows == LightShadows.Hard ? 0f : 1f;
@@ -237,6 +249,9 @@ public partial class CameraRendererV2
 
         shadowSettingsBuffer = CreateBuffer(shadowSettings);
         ShaderInput.SetShadowSettings(buffer, shadowSettingsBuffer);
+
+        ShaderInput.SetHardShadows(buffer, hasShadowsHard);
+        ShaderInput.SetSoftShadows(buffer, hasShadowsSoft);
 
         SubmitBuffer(ref context, buffer);
     }
