@@ -32,9 +32,11 @@ public partial class CameraRendererV2
 
     ShadowData shadowData;
     Matrix4x4[] worldToShadowMatrices;
-    Vector2Int[] cascadeData;
+    Vector3Int[] cascadeData;
+    Vector4[] cullingSpheres;
     ComputeBuffer worldToShadowMatricesBuffer;
     ComputeBuffer cascadeDataBuffer;
+    ComputeBuffer cullingSpheresBuffer;
 
     CommandBuffer buffer = new CommandBuffer
     {
@@ -120,6 +122,10 @@ public partial class CameraRendererV2
         {
             cascadeDataBuffer.Release();
         }
+        if (cullingSpheresBuffer != null)
+        {
+            cullingSpheresBuffer.Release();
+        }
     }
 
     void SetupShadows(ref ScriptableRenderContext context, ref CullingResults cullingResults)
@@ -140,7 +146,6 @@ public partial class CameraRendererV2
             }
             totalCascadeCount += shadowData.lights[i].cascades.Length;
         }
-
         worldToShadowMatrices = new Matrix4x4[totalCascadeCount];
         for (int i = 0, cascadeIndex = 0; i < cullingResults.visibleLights.Length; i++)
         {
@@ -155,15 +160,40 @@ public partial class CameraRendererV2
             }
         }
 
-        cascadeData = new Vector2Int[cullingResults.visibleLights.Length];
+        int totalCullingSpheresCount = 0;
+        cascadeData = new Vector3Int[cullingResults.visibleLights.Length];
         for (int i = 0, cascadeIndex = 0; i < cullingResults.visibleLights.Length; i++)
         {
             if (shadowData.lights[i] == null)
             {
                 continue;
             }
-            cascadeData[i] = new Vector2Int(cascadeIndex, shadowData.lights[i].cascades.Length == 1 ? 0 : 1);
+            cascadeData[i] = Vector3Int.zero;
+            cascadeData[i].x = cascadeIndex;
+            cascadeData[i].y = shadowData.lights[i].cascades.Length == 1 ? 0 : 1;
+            cascadeData[i].z = totalCullingSpheresCount;
             cascadeIndex += shadowData.lights[i].cascades.Length;
+
+            if (shadowData.lights[i].cullingSpheres == null)
+            {
+                continue;
+            }
+
+            totalCullingSpheresCount += shadowData.lights[i].cullingSpheres.Length;
+        }
+
+        cullingSpheres = new Vector4[totalCullingSpheresCount];
+        for (int i = 0, cullingSphereIndex = 0; i < cullingResults.visibleLights.Length; i++)
+        {
+            if (shadowData.lights[i] == null || shadowData.lights[i].cullingSpheres == null)
+            {
+                continue;
+            }
+            for (int j = 0; j < shadowData.lights[i].cullingSpheres.Length; j++)
+            {
+                cullingSpheres[cullingSphereIndex] = shadowData.lights[i].cullingSpheres[j];
+                cullingSphereIndex += 1;
+            }
         }
     }
 
@@ -181,6 +211,9 @@ public partial class CameraRendererV2
 
         cascadeDataBuffer = CreateBuffer(cascadeData);
         ShaderInput.SetCascadeData(buffer, cascadeDataBuffer);
+
+        cullingSpheresBuffer = CreateBuffer(cullingSpheres);
+        ShaderInput.SetCullingSpheres(buffer, cullingSpheresBuffer);
 
         SubmitBuffer(ref context, buffer);
     }
@@ -253,6 +286,7 @@ public partial class CameraRendererV2
         {
             ShadowLight shadowLight = new ShadowLight();
             shadowLight.cascades = new ShadowCascade[4];
+            shadowLight.cullingSpheres = new Vector4[4];
             shadowLight.tileSize = shadowMapSize / 2;
 
             for (int j = 0; j < 4; j++)
@@ -275,6 +309,8 @@ public partial class CameraRendererV2
                     shadowCascade.worldToShadowMatrix = tileMatrix * CreateWorldToShadowMatrix(viewMatrix, projectionMatrix);
                     shadowCascade.tileOffset = tileOffset;
                     shadowCascade.splitData = splitData;
+                    shadowLight.cullingSpheres[j] = splitData.cullingSphere;
+                    shadowLight.cullingSpheres[j].w *= shadowLight.cullingSpheres[j].w;
                     shadowLight.cascades[j] = shadowCascade;
                 }
             }
@@ -290,6 +326,7 @@ public partial class CameraRendererV2
         {
             ShadowLight shadowLight = new ShadowLight();
             shadowLight.cascades = new ShadowCascade[1];
+            shadowLight.cullingSpheres = null;
             shadowLight.tileSize = shadowMapSize;
 
             Matrix4x4 viewMatrix;
@@ -530,6 +567,7 @@ public partial class CameraRendererV2
     {
         public int tileSize;
         public ShadowCascade[] cascades;
+        public Vector4[] cullingSpheres;
     }
 
     class ShadowData
