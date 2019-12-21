@@ -19,10 +19,10 @@ float HardShadowAttenuation (Light light, float3 shadowPosition) {
     return SAMPLE_TEXTURE2D_ARRAY_SHADOW(_ShadowMaps, sampler_ShadowMaps, shadowPosition, light.index);
 }
 
-float SoftShadowAttenuation (Light light, float3 shadowPosition) {
+float SoftShadowAttenuation (Light light, float3 shadowPosition, float2 tileSize) {
     real tentWeights[9];
     real2 tentUVs[9];
-    SampleShadow_ComputeSamples_Tent_5x5(cascade ? _ShadowMapSize : float4(_ShadowMapSize.xy / 2, _ShadowMapSize.xy * 2), shadowPosition.xy, tentWeights, tentUVs);
+    SampleShadow_ComputeSamples_Tent_5x5(float4(tileSize.xx, tileSize.yy), shadowPosition.xy, tentWeights, tentUVs);
     float attenuation = 0;
     for (int i = 0; i < 9; i++) {
         attenuation += tentWeights[i] * SAMPLE_TEXTURE2D_ARRAY_SHADOW(_ShadowMaps, sampler_ShadowMaps, float3(tentUVs[i].xy, shadowPosition.z), light.index);
@@ -81,7 +81,7 @@ float GetShadowAttenuation (Light light, float3 worldPosition) {
     if (_ShadowSettings[light.index].y <= 0) {
         attenuation = HardShadowAttenuation(light, shadowPosition.xyz);
     } else {
-        attenuation = SoftShadowAttenuation(light, shadowPosition.xyz);
+        attenuation = SoftShadowAttenuation(light, shadowPosition.xyz, _ShadowSettings[light.index].zw);
     }
     return lerp(1.0, attenuation, _ShadowSettings[light.index].x);
 }

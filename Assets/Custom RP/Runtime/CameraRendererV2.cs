@@ -206,11 +206,14 @@ public partial class CameraRendererV2
         for (int i = 0; i < cullingResults.visibleLights.Length; i++)
         {
             shadowSettings[i] = Vector4.zero;
-            if (cullingResults.visibleLights[i].light.shadows != LightShadows.None)
+            if (shadowData.lights[i] == null || cullingResults.visibleLights[i].light.shadows == LightShadows.None)
             {
-                shadowSettings[i].x = cullingResults.visibleLights[i].light.shadowStrength;
-                shadowSettings[i].y = cullingResults.visibleLights[i].light.shadows == LightShadows.Hard ? 0f : 1f;
+                continue;
             }
+            shadowSettings[i].x = cullingResults.visibleLights[i].light.shadowStrength;
+            shadowSettings[i].y = cullingResults.visibleLights[i].light.shadows == LightShadows.Hard ? 0f : 1f;
+            shadowSettings[i].z = 1f / shadowData.shadowMapSize;
+            shadowSettings[i].w = shadowData.shadowMapSize;
         }
     }
 
@@ -241,6 +244,7 @@ public partial class CameraRendererV2
     void SetupShadowPass(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize)
     {
         shadowData = new ShadowData();
+        shadowData.shadowMapSize = shadowMapSize;
 
         if (cullingResults.visibleLights.Length <= 0)
         {
@@ -594,5 +598,6 @@ public partial class CameraRendererV2
     {
         public RenderTexture shadowMaps;
         public ShadowLight[] lights;
+        public int shadowMapSize;
     }
 }
