@@ -79,7 +79,7 @@ public partial class CameraRendererV2
         }
     }
 
-    static Matrix4x4 CreateWorldToShadowMatrix(ref Matrix4x4 viewMatrix, ref Matrix4x4 projectionMatrix)
+    static Matrix4x4 CreateWorldToShadowMatrix(Matrix4x4 viewMatrix, Matrix4x4 projectionMatrix)
     {
         if (SystemInfo.usesReversedZBuffer)
         {

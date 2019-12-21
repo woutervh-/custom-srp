@@ -181,6 +181,8 @@ public partial class CameraRendererV2
 
         cascadeDataBuffer = CreateBuffer(cascadeData);
         ShaderInput.SetCascadeData(buffer, cascadeDataBuffer);
+
+        SubmitBuffer(ref context, buffer);
     }
 
     void SetupShadowPass(ref ScriptableRenderContext context, ref CullingResults cullingResults, int shadowMapSize)
@@ -270,7 +272,7 @@ public partial class CameraRendererV2
                     ShadowCascade shadowCascade = new ShadowCascade();
                     shadowCascade.viewMatrix = viewMatrix;
                     shadowCascade.projectionMatrix = projectionMatrix;
-                    shadowCascade.worldToShadowMatrix = tileMatrix * CreateWorldToShadowMatrix(ref viewMatrix, ref projectionMatrix);
+                    shadowCascade.worldToShadowMatrix = tileMatrix * CreateWorldToShadowMatrix(viewMatrix, projectionMatrix);
                     shadowCascade.tileOffset = tileOffset;
                     shadowCascade.splitData = splitData;
                     shadowLight.cascades[j] = shadowCascade;
@@ -299,7 +301,7 @@ public partial class CameraRendererV2
                 ShadowCascade shadowCascade = new ShadowCascade();
                 shadowCascade.viewMatrix = viewMatrix;
                 shadowCascade.projectionMatrix = projectionMatrix;
-                shadowCascade.worldToShadowMatrix = CreateWorldToShadowMatrix(ref viewMatrix, ref projectionMatrix);
+                shadowCascade.worldToShadowMatrix = CreateWorldToShadowMatrix(viewMatrix, projectionMatrix);
                 shadowCascade.tileOffset = Vector2Int.zero;
                 shadowCascade.splitData = splitData;
                 shadowLight.cascades[0] = shadowCascade;
