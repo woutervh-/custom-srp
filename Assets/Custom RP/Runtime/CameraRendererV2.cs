@@ -34,9 +34,11 @@ public partial class CameraRendererV2
     Matrix4x4[] worldToShadowMatrices;
     Vector3Int[] cascadeData;
     Vector4[] cullingSpheres;
+    Vector4[] shadowSettings;
     ComputeBuffer worldToShadowMatricesBuffer;
     ComputeBuffer cascadeDataBuffer;
     ComputeBuffer cullingSpheresBuffer;
+    ComputeBuffer shadowSettingsBuffer;
 
     CommandBuffer buffer = new CommandBuffer
     {
@@ -126,6 +128,10 @@ public partial class CameraRendererV2
         {
             cullingSpheresBuffer.Release();
         }
+        if (shadowSettingsBuffer != null)
+        {
+            shadowSettingsBuffer.Release();
+        }
     }
 
     void SetupShadows(ref ScriptableRenderContext context, ref CullingResults cullingResults)
@@ -195,6 +201,17 @@ public partial class CameraRendererV2
                 cullingSphereIndex += 1;
             }
         }
+
+        shadowSettings = new Vector4[cullingResults.visibleLights.Length];
+        for (int i = 0; i < cullingResults.visibleLights.Length; i++)
+        {
+            shadowSettings[i] = Vector4.zero;
+            if (cullingResults.visibleLights[i].light.shadows != LightShadows.None)
+            {
+                shadowSettings[i].x = cullingResults.visibleLights[i].light.shadowStrength;
+                shadowSettings[i].y = cullingResults.visibleLights[i].light.shadows == LightShadows.Hard ? 0f : 1f;
+            }
+        }
     }
 
     void ApplyShadows(ref ScriptableRenderContext context, ref CullingResults cullingResults)
@@ -214,6 +231,9 @@ public partial class CameraRendererV2
 
         cullingSpheresBuffer = CreateBuffer(cullingSpheres);
         ShaderInput.SetCullingSpheres(buffer, cullingSpheresBuffer);
+
+        shadowSettingsBuffer = CreateBuffer(shadowSettings);
+        ShaderInput.SetShadowSettings(buffer, shadowSettingsBuffer);
 
         SubmitBuffer(ref context, buffer);
     }

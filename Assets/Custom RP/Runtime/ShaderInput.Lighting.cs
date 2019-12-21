@@ -21,6 +21,7 @@ public static partial class ShaderInput
     static int worldToShadowMatricesId = Shader.PropertyToID("_WorldToShadowMatrices");
     static int cascadeDataId = Shader.PropertyToID("_CascadeData");
     static int cullingSpheresId = Shader.PropertyToID("_CullingSpheres");
+    static int shadowSettingsId = Shader.PropertyToID("_ShadowSettings");
 
     public static void SetSoftShadows(CommandBuffer buffer, bool flag)
     {
@@ -110,5 +111,10 @@ public static partial class ShaderInput
     public static void SetCullingSpheres(CommandBuffer buffer, ComputeBuffer cullingSpheres)
     {
         buffer.SetGlobalBuffer(cullingSpheresId, cullingSpheres);
+    }
+
+    public static void SetShadowSettings(CommandBuffer buffer, ComputeBuffer shadowSettings)
+    {
+        buffer.SetGlobalBuffer(shadowSettingsId, shadowSettings);
     }
 }

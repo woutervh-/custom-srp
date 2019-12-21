@@ -3,6 +3,7 @@
 
 CBUFFER_START(_CustomShadows)
     StructuredBuffer<float4x4> _WorldToShadowMatrices;
+    StructuredBuffer<float4> _ShadowSettings;
     StructuredBuffer<int3> _CascadeData;
     StructuredBuffer<float4> _CullingSpheres;
 CBUFFER_END
@@ -16,6 +17,17 @@ float4 GetCullingSphere (Light light, int sphereIndex) {
 
 float HardShadowAttenuation (Light light, float3 shadowPosition) {
     return SAMPLE_TEXTURE2D_ARRAY_SHADOW(_ShadowMaps, sampler_ShadowMaps, shadowPosition, light.index);
+}
+
+float SoftShadowAttenuation (Light light, float3 shadowPosition) {
+    real tentWeights[9];
+    real2 tentUVs[9];
+    SampleShadow_ComputeSamples_Tent_5x5(cascade ? _ShadowMapSize : float4(_ShadowMapSize.xy / 2, _ShadowMapSize.xy * 2), shadowPosition.xy, tentWeights, tentUVs);
+    float attenuation = 0;
+    for (int i = 0; i < 9; i++) {
+        attenuation += tentWeights[i] * SAMPLE_TEXTURE2D_ARRAY_SHADOW(_ShadowMaps, sampler_ShadowMaps, float3(tentUVs[i].xy, shadowPosition.z), light.index);
+    }
+    return attenuation;
 }
 
 float InsideCascadeCullingSphere (Light light, int cascadeIndex, float3 worldPosition) {
@@ -41,6 +53,10 @@ float4x4 GetWorldToShadowMatrix (Light light, float3 worldPosition) {
 }
 
 float GetShadowAttenuation (Light light, float3 worldPosition) {
+    if (_ShadowSettings[light.index].x <= 0) {
+        return 1.0;
+    }
+
     float4x4 worldToShadowMatrix;
     if (_CascadeData[light.index].y <= 0) {
         worldToShadowMatrix = GetWorldToShadowMatrix(light, worldPosition);
@@ -61,7 +77,13 @@ float GetShadowAttenuation (Light light, float3 worldPosition) {
         }
     #endif
     
-    return HardShadowAttenuation(light, shadowPosition.xyz);
+    float attenuation;
+    if (_ShadowSettings[light.index].y <= 0) {
+        attenuation = HardShadowAttenuation(light, shadowPosition.xyz);
+    } else {
+        attenuation = SoftShadowAttenuation(light, shadowPosition.xyz);
+    }
+    return lerp(1.0, attenuation, _ShadowSettings[light.index].x);
 }
 
 #endif
