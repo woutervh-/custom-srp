@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -45,6 +46,8 @@ public partial class CameraRenderer
     ComputeBuffer cascadeDataBuffer;
     ComputeBuffer cullingSpheresBuffer;
     ComputeBuffer shadowSettingsBuffer;
+
+    Mesh mesh = new SphereMeshGenerator(10, Vector3.up, Vector3.up, Vector3.forward, Vector3.right).GenerateMesh();
 
     CommandBuffer buffer = new CommandBuffer
     {
@@ -480,6 +483,11 @@ public partial class CameraRenderer
 
     void DrawVisibleGeometry(ref ScriptableRenderContext context, Camera camera, ref CullingResults cullingResults, bool useDynamicBatching, bool useGPUInstancing)
     {
+        // Material[] materials = Resources.FindObjectsOfTypeAll<Material>();
+        // Material material = System.Array.Find(materials, m => m.name.StartsWith("Custom Lit (3)"));
+        // buffer.DrawMesh(mesh, Matrix4x4.identity, material, 0);
+        // SubmitBuffer(ref context, buffer);
+
         SortingSettings sortingSettings = new SortingSettings(camera)
         {
             criteria = SortingCriteria.CommonOpaque
