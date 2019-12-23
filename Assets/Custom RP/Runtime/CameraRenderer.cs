@@ -2,6 +2,11 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
 
+// TODO:
+// https://github.com/sienaiwun/MultiPass-Srp-Demo/blob/master/Assets/MultiPass-Demo/3-MultiPassAssetPipe/MultiPassPipe.cs
+// Check possibility of rendering custom mesh renderers.
+// buffer.DrawRenderer buffer.DrawMesh
+
 public partial class CameraRenderer
 {
     static Vector3 fourCascadesSplit = new Vector3(0.067f, 0.2f, 0.467f);
